@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { salesAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
-import "../styles/transactions.css"
 
 function Transactions() {
     const [transactions, setTransactions] = useState([])
@@ -34,7 +33,6 @@ function Transactions() {
         }
     }
 
-    // Filter transactions
     const filteredTransactions = transactions.filter(transaction => {
         const matchesSearch = transaction.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             transaction.cashier_name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -57,11 +55,9 @@ function Transactions() {
         return matchesSearch && matchesPayment && matchesDate
     })
 
-    // Calculate totals
     const totalSales = filteredTransactions.reduce((sum, t) => sum + parseFloat(t.total), 0)
     const totalTransactions = filteredTransactions.length
 
-    // View transaction details
     const viewDetails = async (transactionId) => {
         try {
             const response = await salesAPI.getTransactionById(transactionId)
@@ -73,7 +69,6 @@ function Transactions() {
         }
     }
 
-    // Format date
     const formatDate = (dateString) => {
         const date = new Date(dateString)
         return date.toLocaleDateString('en-US', {
@@ -85,48 +80,118 @@ function Transactions() {
         })
     }
 
+    // SVG Icons
+    const DollarIcon = () => (
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="1" x2="12" y2="23"></line>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+    )
+
+    const ReceiptIcon = () => (
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+    )
+
+    const ChartIcon = () => (
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+    )
+
+    const AlertIcon = () => (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+    )
+
+    const SearchIcon = () => (
+        <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="M21 21l-4.35-4.35"></path>
+        </svg>
+    )
+
+    const CashIcon = () => (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+            <line x1="1" y1="10" x2="23" y2="10"></line>
+        </svg>
+    )
+
+    const PhoneIcon = () => (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+        </svg>
+    )
+
+    const EyeIcon = () => (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+    )
+
     return (
-        <div className="home-container">
+        <div className="flex min-h-screen bg-pos-bg">
             <Sidebar />
-            <div className="main-wrapper">
-                <header className="home-header">
-                    <div className="header-content">
-                        <h1 className="page-title">Transactions</h1>
-                    </div>
+            <div className="flex-1 flex flex-col">
+                <header className="bg-white px-6 py-4 border-b border-pos-border">
+                    <h1 className="text-xl font-semibold text-pos-text">Transactions</h1>
                 </header>
 
-                <main className="transactions-main">
+                <main className="flex-1 p-6">
                     {error && (
-                        <div className="alert alert-error">
-                            <span className="alert-icon">⚠️</span>
-                            {error}
-                            <button className="alert-close" onClick={() => setError("")}>×</button>
+                        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                            <AlertIcon />
+                            <span>{error}</span>
+                            <button className="ml-auto text-red-500 hover:text-red-700" onClick={() => setError("")}>
+                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                            </button>
                         </div>
                     )}
 
                     {/* Summary Cards */}
-                    <div className="summary-cards">
-                        <div className="summary-card">
-                            <div className="summary-icon">💰</div>
-                            <div className="summary-info">
-                                <h3>Total Sales</h3>
-                                <p className="summary-value">KSh {totalSales.toFixed(2)}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
+                                <DollarIcon />
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Total Sales</p>
+                                <p className="text-xl font-semibold text-pos-text">KSh {totalSales.toFixed(2)}</p>
                             </div>
                         </div>
 
-                        <div className="summary-card">
-                            <div className="summary-icon">🧾</div>
-                            <div className="summary-info">
-                                <h3>Total Transactions</h3>
-                                <p className="summary-value">{totalTransactions}</p>
+                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                                <ReceiptIcon />
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Total Transactions</p>
+                                <p className="text-xl font-semibold text-pos-text">{totalTransactions}</p>
                             </div>
                         </div>
 
-                        <div className="summary-card">
-                            <div className="summary-icon">📊</div>
-                            <div className="summary-info">
-                                <h3>Average Sale</h3>
-                                <p className="summary-value">
+                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
+                            <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600">
+                                <ChartIcon />
+                            </div>
+                            <div>
+                                <p className="text-sm text-gray-500">Average Sale</p>
+                                <p className="text-xl font-semibold text-pos-text">
                                     KSh {totalTransactions > 0 ? (totalSales / totalTransactions).toFixed(2) : '0.00'}
                                 </p>
                             </div>
@@ -134,20 +199,23 @@ function Transactions() {
                     </div>
 
                     {/* Filters */}
-                    <div className="transactions-filters">
-                        <div className="filter-group">
-                            <input
-                                type="text"
-                                className="filter-search"
-                                placeholder="Search by Transaction ID or Cashier..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
+                    <div className="bg-white rounded-xl p-4 mb-6">
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="relative flex-1 min-w-[200px]">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                    <SearchIcon />
+                                </div>
+                                <input
+                                    type="text"
+                                    className="w-full pl-10 pr-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                    placeholder="Search by Transaction ID or Cashier..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
 
-                        <div className="filter-group">
                             <select
-                                className="filter-select"
+                                className="px-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
                                 value={filterPaymentMethod}
                                 onChange={(e) => setFilterPaymentMethod(e.target.value)}
                             >
@@ -155,198 +223,224 @@ function Transactions() {
                                 <option value="cash">Cash</option>
                                 <option value="mpesa">M-Pesa</option>
                             </select>
-                        </div>
 
-                        <div className="filter-group">
-                            <label className="filter-label">From:</label>
-                            <input
-                                type="date"
-                                className="filter-date"
-                                value={filterDateFrom}
-                                onChange={(e) => setFilterDateFrom(e.target.value)}
-                            />
-                        </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-sm text-gray-500">From:</label>
+                                <input
+                                    type="date"
+                                    className="px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                    value={filterDateFrom}
+                                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                                />
+                            </div>
 
-                        <div className="filter-group">
-                            <label className="filter-label">To:</label>
-                            <input
-                                type="date"
-                                className="filter-date"
-                                value={filterDateTo}
-                                onChange={(e) => setFilterDateTo(e.target.value)}
-                            />
-                        </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-sm text-gray-500">To:</label>
+                                <input
+                                    type="date"
+                                    className="px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                    value={filterDateTo}
+                                    onChange={(e) => setFilterDateTo(e.target.value)}
+                                />
+                            </div>
 
-                        <button
-                            className="filter-clear-btn"
-                            onClick={() => {
-                                setSearchTerm("")
-                                setFilterPaymentMethod("")
-                                setFilterDateFrom("")
-                                setFilterDateTo("")
-                            }}
-                        >
-                            Clear Filters
-                        </button>
+                            <button
+                                className="px-4 py-2 text-sm text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                onClick={() => {
+                                    setSearchTerm("")
+                                    setFilterPaymentMethod("")
+                                    setFilterDateFrom("")
+                                    setFilterDateTo("")
+                                }}
+                            >
+                                Clear Filters
+                            </button>
+                        </div>
                     </div>
 
                     {/* Transactions Table */}
                     {loading ? (
-                        <div className="loading-state">Loading transactions...</div>
+                        <div className="bg-white rounded-xl p-12 text-center text-gray-500">
+                            Loading transactions...
+                        </div>
                     ) : (
-                        <div className="transactions-table-wrapper">
-                            <table className="transactions-table">
-                                <thead>
-                                    <tr>
-                                        <th>Transaction ID</th>
-                                        <th>Date & Time</th>
-                                        <th>Cashier</th>
-                                        <th>Items</th>
-                                        <th>Payment Method</th>
-                                        <th>Discount</th>
-                                        <th>Total</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredTransactions.length === 0 ? (
+                        <div className="bg-white rounded-xl overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b border-pos-border">
                                         <tr>
-                                            <td colSpan="9" className="empty-state">
-                                                No transactions found
-                                            </td>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Transaction ID</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Date & Time</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Cashier</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Items</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Payment</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Discount</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Total</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Status</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
                                         </tr>
-                                    ) : (
-                                        filteredTransactions.map(transaction => (
-                                            <tr key={transaction.id}>
-                                                <td className="transaction-id-cell">
-                                                    {transaction.transaction_id}
-                                                </td>
-                                                <td>{formatDate(transaction.created_at)}</td>
-                                                <td>{transaction.cashier_name || 'N/A'}</td>
-                                                <td className="items-cell">
-                                                    {transaction.items?.length || 0} item(s)
-                                                </td>
-                                                <td>
-                                                    <span className={`payment-badge ${transaction.payment_method}`}>
-                                                        {transaction.payment_method === 'cash' ? '💵 Cash' : '📱 M-Pesa'}
-                                                    </span>
-                                                </td>
-                                                <td>KSh {transaction.discount}</td>
-                                                <td className="total-cell">KSh {transaction.total}</td>
-                                                <td>
-                                                    <span className={`status-badge ${transaction.status}`}>
-                                                        {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <button
-                                                        className="view-btn"
-                                                        onClick={() => viewDetails(transaction.id)}
-                                                    >
-                                                        View Details
-                                                    </button>
+                                    </thead>
+                                    <tbody className="divide-y divide-pos-border">
+                                        {filteredTransactions.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
+                                                    No transactions found
                                                 </td>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
+                                        ) : (
+                                            filteredTransactions.map(transaction => (
+                                                <tr key={transaction.id} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-mono text-sm text-pos-text">
+                                                        {transaction.transaction_id}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">{formatDate(transaction.created_at)}</td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">{transaction.cashier_name || 'N/A'}</td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                                        {transaction.items?.length || 0} item(s)
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                            transaction.payment_method === 'cash'
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-blue-100 text-blue-700'
+                                                        }`}>
+                                                            {transaction.payment_method === 'cash' ? <CashIcon /> : <PhoneIcon />}
+                                                            {transaction.payment_method === 'cash' ? 'Cash' : 'M-Pesa'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">KSh {transaction.discount}</td>
+                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">KSh {transaction.total}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                            transaction.status === 'completed'
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-yellow-100 text-yellow-700'
+                                                        }`}>
+                                                            {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <button
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                                            onClick={() => viewDetails(transaction.id)}
+                                                        >
+                                                            <EyeIcon />
+                                                            View
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </main>
 
                 {/* Transaction Detail Modal */}
                 {showDetailModal && selectedTransaction && (
-                    <div className="modal-overlay" onClick={() => setShowDetailModal(false)}>
-                        <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2>Transaction Details</h2>
-                                <button className="modal-close" onClick={() => setShowDetailModal(false)}>×</button>
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDetailModal(false)}>
+                        <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
+                                <h2 className="text-lg font-semibold text-pos-text">Transaction Details</h2>
+                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowDetailModal(false)}>
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
                             </div>
 
-                            <div className="transaction-detail">
+                            <div className="p-6">
                                 {/* Header Info */}
-                                <div className="detail-header">
-                                    <div className="detail-row">
-                                        <span className="detail-label">Transaction ID:</span>
-                                        <span className="detail-value transaction-id">{selectedTransaction.transaction_id}</span>
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div>
+                                        <p className="text-sm text-gray-500">Transaction ID</p>
+                                        <p className="font-mono text-pos-text">{selectedTransaction.transaction_id}</p>
                                     </div>
-                                    <div className="detail-row">
-                                        <span className="detail-label">Date & Time:</span>
-                                        <span className="detail-value">{formatDate(selectedTransaction.created_at)}</span>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Date & Time</p>
+                                        <p className="text-pos-text">{formatDate(selectedTransaction.created_at)}</p>
                                     </div>
-                                    <div className="detail-row">
-                                        <span className="detail-label">Cashier:</span>
-                                        <span className="detail-value">{selectedTransaction.cashier_name || 'N/A'}</span>
+                                    <div>
+                                        <p className="text-sm text-gray-500">Cashier</p>
+                                        <p className="text-pos-text">{selectedTransaction.cashier_name || 'N/A'}</p>
                                     </div>
-                                    <div className="detail-row">
-                                        <span className="detail-label">Payment Method:</span>
-                                        <span className={`payment-badge ${selectedTransaction.payment_method}`}>
-                                            {selectedTransaction.payment_method === 'cash' ? '💵 Cash' : '📱 M-Pesa'}
+                                    <div>
+                                        <p className="text-sm text-gray-500">Payment Method</p>
+                                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                            selectedTransaction.payment_method === 'cash'
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-blue-100 text-blue-700'
+                                        }`}>
+                                            {selectedTransaction.payment_method === 'cash' ? <CashIcon /> : <PhoneIcon />}
+                                            {selectedTransaction.payment_method === 'cash' ? 'Cash' : 'M-Pesa'}
                                         </span>
                                     </div>
                                     {selectedTransaction.mpesa_reference && (
-                                        <div className="detail-row">
-                                            <span className="detail-label">M-Pesa Reference:</span>
-                                            <span className="detail-value">{selectedTransaction.mpesa_reference}</span>
+                                        <div className="col-span-2">
+                                            <p className="text-sm text-gray-500">M-Pesa Reference</p>
+                                            <p className="font-mono text-pos-text">{selectedTransaction.mpesa_reference}</p>
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Items List */}
-                                <div className="detail-section">
-                                    <h3>Items</h3>
-                                    <table className="items-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Product</th>
-                                                <th>Quantity</th>
-                                                <th>Unit Price</th>
-                                                <th>Subtotal</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {selectedTransaction.items?.map((item, index) => (
-                                                <tr key={index}>
-                                                    <td>{item.product_name}</td>
-                                                    <td>{item.quantity}</td>
-                                                    <td>KSh {item.unit_price}</td>
-                                                    <td>KSh {item.subtotal}</td>
+                                <div className="mb-6">
+                                    <h3 className="text-sm font-medium text-gray-600 mb-3">Items</h3>
+                                    <div className="border border-pos-border rounded-lg overflow-hidden">
+                                        <table className="w-full">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Product</th>
+                                                    <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Qty</th>
+                                                    <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Unit Price</th>
+                                                    <th className="text-left px-4 py-2 text-sm font-medium text-gray-600">Subtotal</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-pos-border">
+                                                {selectedTransaction.items?.map((item, index) => (
+                                                    <tr key={index}>
+                                                        <td className="px-4 py-2 text-sm text-pos-text">{item.product_name}</td>
+                                                        <td className="px-4 py-2 text-sm text-gray-600">{item.quantity}</td>
+                                                        <td className="px-4 py-2 text-sm text-gray-600">KSh {item.unit_price}</td>
+                                                        <td className="px-4 py-2 text-sm text-pos-text">KSh {item.subtotal}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
 
                                 {/* Summary */}
-                                <div className="detail-summary">
-                                    <div className="summary-row">
-                                        <span>Subtotal:</span>
-                                        <span>KSh {selectedTransaction.subtotal}</span>
+                                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Subtotal</span>
+                                        <span className="text-pos-text">KSh {selectedTransaction.subtotal}</span>
                                     </div>
-                                    <div className="summary-row">
-                                        <span>Discount:</span>
-                                        <span className="discount-amount">- KSh {selectedTransaction.discount}</span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Discount</span>
+                                        <span className="text-red-500">- KSh {selectedTransaction.discount}</span>
                                     </div>
                                     {selectedTransaction.tax > 0 && (
-                                        <div className="summary-row">
-                                            <span>Tax:</span>
-                                            <span>KSh {selectedTransaction.tax}</span>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Tax</span>
+                                            <span className="text-pos-text">KSh {selectedTransaction.tax}</span>
                                         </div>
                                     )}
-                                    <div className="summary-row total-row">
-                                        <span>Total:</span>
-                                        <span className="total-amount">KSh {selectedTransaction.total}</span>
+                                    <div className="flex justify-between text-base font-semibold pt-2 border-t border-pos-border">
+                                        <span className="text-pos-text">Total</span>
+                                        <span className="text-pos-text">KSh {selectedTransaction.total}</span>
                                     </div>
-                                    <div className="summary-row">
-                                        <span>Amount Paid:</span>
-                                        <span>KSh {selectedTransaction.amount_paid}</span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Amount Paid</span>
+                                        <span className="text-pos-text">KSh {selectedTransaction.amount_paid}</span>
                                     </div>
                                     {selectedTransaction.change_amount > 0 && (
-                                        <div className="summary-row">
-                                            <span>Change:</span>
-                                            <span className="change-amount">KSh {selectedTransaction.change_amount}</span>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Change</span>
+                                            <span className="text-green-600">KSh {selectedTransaction.change_amount}</span>
                                         </div>
                                     )}
                                 </div>

@@ -8,13 +8,28 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and shop ID
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Add shop ID header if current shop is set
+    const currentShop = localStorage.getItem('current_shop');
+    if (currentShop) {
+      try {
+        const shop = JSON.parse(currentShop);
+        // Only set header if shop.id exists and is valid
+        if (shop && shop.id) {
+          config.headers['X-Shop-ID'] = shop.id;
+        }
+      } catch (e) {
+        // Invalid JSON in localStorage, ignore it
+      }
+    }
+
     return config;
   },
   (error) => {
@@ -47,6 +62,7 @@ api.interceptors.response.use(
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
+        localStorage.removeItem('current_shop');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -62,6 +78,19 @@ export const authAPI = {
   signup: (userData) => api.post('/auth/signup/', userData),
   logout: () => api.post('/auth/logout/'),
   getCurrentUser: () => api.get('/auth/user/'),
+  get: (url, config) => api.get(url, config),
+};
+
+// Shops API calls
+export const shopsAPI = {
+  getMyShops: () => api.get('/shops/my_shops/'),
+  getAll: (params) => api.get('/shops/', { params }),
+  getById: (id) => api.get(`/shops/${id}/`),
+  create: (data) => api.post('/shops/', data),
+  update: (id, data) => api.put(`/shops/${id}/`, data),
+  getMembers: (shopId) => api.get(`/shops/${shopId}/members/`),
+  inviteStaff: (shopId, data) => api.post(`/shops/${shopId}/invite/`, data),
+  removeMember: (shopId, userId) => api.post(`/shops/${shopId}/remove_member/`, { user_id: userId }),
 };
 
 // Products API calls
@@ -73,6 +102,7 @@ export const productsAPI = {
   update: (id, data) => api.put(`/products/${id}/`, data),
   delete: (id) => api.delete(`/products/${id}/`),
   getCategories: () => api.get('/products/categories/'),
+  createCategory: (data) => api.post('/products/categories/', data),
 };
 
 // Sales API calls

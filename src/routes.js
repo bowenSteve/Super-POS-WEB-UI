@@ -5,8 +5,10 @@ import Inventory from "./pages/Inventory"
 import Customers from "./pages/Customers"
 import Reports from "./pages/Reports"
 import Settings from "./pages/Settings"
+import Profile from "./pages/Profile"
 import Login from "./pages/Login"
 import Signup from "./pages/Signup"
+import CreateShop from "./pages/CreateShop"
 import ProtectedRoute from "./components/ProtectedRoute"
 
 const routes = [
@@ -17,6 +19,10 @@ const routes = [
     {
         path: '/signup',
         element: <Signup />
+    },
+    {
+        path: '/create-shop',
+        element: <ProtectedRoute><CreateShop /></ProtectedRoute>
     },
     {
         path: '/',
@@ -41,6 +47,10 @@ const routes = [
     {
         path: '/reports',
         element: <ProtectedRoute><Reports /></ProtectedRoute>
+    },
+    {
+        path: '/profile',
+        element: <ProtectedRoute><Profile /></ProtectedRoute>
     },
     {
         path: '/settings',
