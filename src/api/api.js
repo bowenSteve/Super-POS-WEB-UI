@@ -76,7 +76,7 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials) => api.post('/auth/login/', credentials),
   signup: (userData) => api.post('/auth/signup/', userData),
-  logout: () => api.post('/auth/logout/'),
+  logout: (data) => api.post('/auth/logout/', data),
   getCurrentUser: () => api.get('/auth/user/'),
   get: (url, config) => api.get(url, config),
 };
@@ -91,6 +91,7 @@ export const shopsAPI = {
   getMembers: (shopId) => api.get(`/shops/${shopId}/members/`),
   inviteStaff: (shopId, data) => api.post(`/shops/${shopId}/invite/`, data),
   removeMember: (shopId, userId) => api.post(`/shops/${shopId}/remove_member/`, { user_id: userId }),
+  updateMemberRole: (shopId, userId, role) => api.post(`/shops/${shopId}/update_member_role/`, { user_id: userId, role }),
 };
 
 // Products API calls

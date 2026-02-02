@@ -26,27 +26,27 @@ const routes = [
     },
     {
         path: '/',
-        element: <ProtectedRoute><Home /></ProtectedRoute>
+        element: <ProtectedRoute permission="dashboard"><Home /></ProtectedRoute>
     },
     {
         path: '/sales',
-        element: <ProtectedRoute><Sales /></ProtectedRoute>
+        element: <ProtectedRoute permission="pos"><Sales /></ProtectedRoute>
     },
     {
         path: '/transactions',
-        element: <ProtectedRoute><Transactions /></ProtectedRoute>
+        element: <ProtectedRoute permission="pos"><Transactions /></ProtectedRoute>
     },
     {
         path: '/inventory',
-        element: <ProtectedRoute><Inventory /></ProtectedRoute>
+        element: <ProtectedRoute permission="inventory"><Inventory /></ProtectedRoute>
     },
     {
         path: '/customers',
-        element: <ProtectedRoute><Customers /></ProtectedRoute>
+        element: <ProtectedRoute permission="customers"><Customers /></ProtectedRoute>
     },
     {
         path: '/reports',
-        element: <ProtectedRoute><Reports /></ProtectedRoute>
+        element: <ProtectedRoute permission="reports"><Reports /></ProtectedRoute>
     },
     {
         path: '/profile',
@@ -54,7 +54,7 @@ const routes = [
     },
     {
         path: '/settings',
-        element: <ProtectedRoute><Settings /></ProtectedRoute>
+        element: <ProtectedRoute permission="settings"><Settings /></ProtectedRoute>
     }
 ]
 

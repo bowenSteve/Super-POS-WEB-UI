@@ -133,7 +133,19 @@ export const AuthProvider = ({ children }) => {
         }
     }
 
-    const logout = () => {
+    const logout = async () => {
+        // Blacklist the refresh token on the backend
+        try {
+            const refreshToken = localStorage.getItem('refresh_token')
+            if (refreshToken) {
+                await authAPI.logout({ refresh: refreshToken })
+            }
+        } catch (error) {
+            // Continue with logout even if backend call fails
+            console.error('Backend logout failed:', error)
+        }
+
+        // Clear local storage
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         localStorage.removeItem('user')

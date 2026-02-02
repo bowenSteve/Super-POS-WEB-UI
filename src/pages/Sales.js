@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useAuth } from "../context/AuthContext"
 import { productsAPI, salesAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
+import ToastNotification, { toast } from '../components/ToastNotification'
 
 function Sales() {
     const { user } = useAuth()
@@ -16,8 +17,23 @@ function Sales() {
     const [mpesaReference, setMpesaReference] = useState("")
     const [amountPaid, setAmountPaid] = useState("")
     const [processing, setProcessing] = useState(false)
-    const [error, setError] = useState("")
-    const [success, setSuccess] = useState("")
+    const [heldTransactions, setHeldTransactions] = useState([])
+    const [showRecallModal, setShowRecallModal] = useState(false)
+    const [holdNote, setHoldNote] = useState("")
+    const [showHoldModal, setShowHoldModal] = useState(false)
+
+    // Load held transactions from localStorage on mount
+    useEffect(() => {
+        const savedHolds = localStorage.getItem('heldTransactions')
+        if (savedHolds) {
+            try {
+                setHeldTransactions(JSON.parse(savedHolds))
+            } catch (err) {
+                console.error('Failed to load held transactions:', err)
+                localStorage.removeItem('heldTransactions')
+            }
+        }
+    }, [])
 
     useEffect(() => {
         fetchCategories()
@@ -42,7 +58,6 @@ function Sales() {
         }
 
         setSearching(true)
-        setError("")
 
         try {
             const params = {}
@@ -56,7 +71,7 @@ function Sales() {
             const response = await productsAPI.getAll(params)
             setSearchResults(response.data.results || response.data)
         } catch (err) {
-            setError("Failed to search products")
+            toast.error("Failed to search products")
             console.error(err)
         } finally {
             setSearching(false)
@@ -96,7 +111,7 @@ function Sales() {
         const product = cart.find(item => item.product.id === productId)?.product
 
         if (newQuantity > product.stock_quantity) {
-            setError(`Only ${product.stock_quantity} units available for ${product.name}`)
+            toast.error(`Only ${product.stock_quantity} units available for ${product.name}`)
             return
         }
 
@@ -110,7 +125,6 @@ function Sales() {
                 ? { ...item, quantity: newQuantity }
                 : item
         ))
-        setError("")
     }
 
     const removeFromCart = (productId) => {
@@ -124,22 +138,21 @@ function Sales() {
 
     const handleCheckout = async () => {
         if (cart.length === 0) {
-            setError("Cart is empty")
+            toast.error("Cart is empty")
             return
         }
 
         if (paymentMethod === "cash" && (!amountPaid || parseFloat(amountPaid) < total)) {
-            setError("Amount paid is less than total")
+            toast.error("Amount paid is less than total")
             return
         }
 
         if (paymentMethod === "mpesa" && !mpesaReference.trim()) {
-            setError("M-Pesa reference number is required")
+            toast.error("M-Pesa reference number is required")
             return
         }
 
         setProcessing(true)
-        setError("")
 
         try {
             const transactionData = {
@@ -162,7 +175,7 @@ function Sales() {
 
             const response = await salesAPI.createTransaction(transactionData)
 
-            setSuccess(`Transaction completed! ID: ${response.data.transaction_id}`)
+            toast.success(`Transaction completed! ID: ${response.data.transaction_id}`)
 
             setCart([])
             setDiscount(0)
@@ -170,15 +183,133 @@ function Sales() {
             setMpesaReference("")
             setAmountPaid("")
 
-            setTimeout(() => setSuccess(""), 5000)
-
         } catch (err) {
             const errorMsg = err.response?.data?.items || err.response?.data?.detail || "Failed to complete transaction"
-            setError(errorMsg)
+            toast.error(errorMsg)
             console.error(err)
         } finally {
             setProcessing(false)
         }
+    }
+
+    // Hold current transaction
+    const handleHoldTransaction = () => {
+        if (cart.length === 0) {
+            toast.error("Cannot hold an empty cart")
+            return
+        }
+
+        if (heldTransactions.length >= 10) {
+            toast.error("Maximum 10 held transactions. Please recall or clear some first.")
+            return
+        }
+
+        const heldTransaction = {
+            id: Date.now().toString(),
+            items: cart,
+            discount: discount,
+            holdTime: new Date().toISOString(),
+            holdNote: holdNote.trim(),
+            cashierId: user.id,
+            cashierName: user.username
+        }
+
+        const updatedHolds = [...heldTransactions, heldTransaction]
+        setHeldTransactions(updatedHolds)
+        localStorage.setItem('heldTransactions', JSON.stringify(updatedHolds))
+
+        // Clear current cart
+        setCart([])
+        setDiscount(0)
+        setHoldNote("")
+        setShowHoldModal(false)
+        toast.success(`Transaction held successfully ${holdNote ? `- ${holdNote}` : ''}`)
+    }
+
+    // Recall a held transaction
+    const handleRecallTransaction = (heldId) => {
+        const heldTransaction = heldTransactions.find(h => h.id === heldId)
+        if (!heldTransaction) return
+
+        // If cart has items, ask user what to do
+        if (cart.length > 0) {
+            const confirmReplace = window.confirm(
+                "You have items in the current cart. Click OK to replace with held transaction, or Cancel to merge."
+            )
+
+            if (confirmReplace) {
+                // Replace current cart
+                setCart(heldTransaction.items)
+                setDiscount(heldTransaction.discount)
+            } else {
+                // Merge carts - properly create new objects to ensure React detects changes
+                const mergedCart = []
+                const processedIds = new Set()
+
+                // First, add all current cart items, updating quantities if they match held items
+                cart.forEach(cartItem => {
+                    const matchingHeldItem = heldTransaction.items.find(heldItem => heldItem.product.id === cartItem.product.id)
+                    if (matchingHeldItem) {
+                        mergedCart.push({
+                            ...cartItem,
+                            quantity: cartItem.quantity + matchingHeldItem.quantity
+                        })
+                        processedIds.add(cartItem.product.id)
+                    } else {
+                        mergedCart.push(cartItem)
+                    }
+                })
+
+                // Then, add held items that weren't in the current cart
+                heldTransaction.items.forEach(heldItem => {
+                    if (!processedIds.has(heldItem.product.id)) {
+                        mergedCart.push(heldItem)
+                    }
+                })
+
+                setCart(mergedCart)
+                setDiscount(parseFloat(discount || 0) + parseFloat(heldTransaction.discount || 0))
+            }
+        } else {
+            // Cart is empty, just load held transaction
+            setCart(heldTransaction.items)
+            setDiscount(heldTransaction.discount)
+        }
+
+        // Remove from held transactions
+        const updatedHolds = heldTransactions.filter(h => h.id !== heldId)
+        setHeldTransactions(updatedHolds)
+        localStorage.setItem('heldTransactions', JSON.stringify(updatedHolds))
+
+        setShowRecallModal(false)
+        toast.success("Transaction recalled successfully")
+    }
+
+    // Delete a held transaction
+    const handleDeleteHeldTransaction = (heldId) => {
+        if (!window.confirm("Are you sure you want to delete this held transaction?")) {
+            return
+        }
+
+        const updatedHolds = heldTransactions.filter(h => h.id !== heldId)
+        setHeldTransactions(updatedHolds)
+        localStorage.setItem('heldTransactions', JSON.stringify(updatedHolds))
+        toast.success("Held transaction deleted")
+    }
+
+    // Format time ago
+    const getTimeAgo = (isoString) => {
+        const now = new Date()
+        const then = new Date(isoString)
+        const diffMs = now - then
+        const diffMins = Math.floor(diffMs / 60000)
+
+        if (diffMins < 1) return 'Just now'
+        if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`
+        const diffHours = Math.floor(diffMins / 60)
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+        const diffDays = Math.floor(diffHours / 24)
+        return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
     }
 
     // SVG Icons
@@ -260,8 +391,38 @@ function Sales() {
         </svg>
     )
 
+    const PauseIcon = () => (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="6" y="4" width="4" height="16"></rect>
+            <rect x="14" y="4" width="4" height="16"></rect>
+        </svg>
+    )
+
+    const ClockIcon = () => (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+    )
+
+    const LayersIcon = () => (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+        </svg>
+    )
+
+    const XIcon = () => (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+    )
+
     return (
         <div className="flex min-h-screen bg-pos-bg">
+            <ToastNotification />
             <Sidebar />
             <div className="flex-1 flex flex-col">
                 {/* Header */}
@@ -290,40 +451,6 @@ function Sales() {
                         </div>
                     </div>
                 </header>
-
-                {/* Alerts */}
-                {error && (
-                    <div className="mx-6 mt-4 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                        </svg>
-                        <span className="flex-1">{error}</span>
-                        <button className="text-red-500 hover:text-red-700" onClick={() => setError("")}>
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
-                    </div>
-                )}
-
-                {success && (
-                    <div className="mx-6 mt-4 flex items-center gap-3 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                        <span className="flex-1">{success}</span>
-                        <button className="text-green-500 hover:text-green-700" onClick={() => setSuccess("")}>
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
-                    </div>
-                )}
 
                 {/* Main Content - Two Panel Layout */}
                 <main className="flex-1 flex gap-6 p-6 overflow-hidden">
@@ -404,8 +531,30 @@ function Sales() {
                             <div className="flex items-center gap-2">
                                 <CartIcon />
                                 <h2 className="font-semibold text-pos-text">Cart</h2>
+                                <span className="text-sm text-gray-500">{cart.length} items</span>
                             </div>
-                            <span className="text-sm text-gray-500">{cart.length} items</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="relative p-2 text-gray-600 hover:text-pos-primary hover:bg-pos-hover rounded-lg transition-colors"
+                                    onClick={() => setShowRecallModal(true)}
+                                    title="Recall held transaction"
+                                >
+                                    <LayersIcon />
+                                    {heldTransactions.length > 0 && (
+                                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
+                                            {heldTransactions.length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    className="p-2 text-gray-600 hover:text-pos-primary hover:bg-pos-hover rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => setShowHoldModal(true)}
+                                    disabled={cart.length === 0}
+                                    title="Hold transaction"
+                                >
+                                    <PauseIcon />
+                                </button>
+                            </div>
                         </div>
 
                         {cart.length === 0 ? (
@@ -592,6 +741,126 @@ function Sales() {
                         )}
                     </div>
                 </main>
+
+                {/* Hold Modal */}
+                {showHoldModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHoldModal(false)}>
+                        <div className="bg-white rounded-xl p-6 w-full max-w-md m-4" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-pos-text">Hold Transaction</h3>
+                                <button
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+                                    onClick={() => setShowHoldModal(false)}
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm text-gray-600 mb-2">
+                                        Note (optional) - e.g., customer name or reason
+                                    </label>
+                                    <input
+                                        type="text"
+                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                        placeholder="John - went to ATM"
+                                        value={holdNote}
+                                        onChange={(e) => setHoldNote(e.target.value)}
+                                        maxLength={50}
+                                    />
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-lg">
+                                    <div className="text-sm text-gray-600 mb-1">Items: {cart.length}</div>
+                                    <div className="text-sm font-medium text-pos-text">Total: KSh {total.toFixed(2)}</div>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        className="flex-1 px-4 py-2 border border-pos-border text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                                        onClick={() => {
+                                            setShowHoldModal(false)
+                                            setHoldNote("")
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        className="flex-1 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text transition-colors"
+                                        onClick={handleHoldTransaction}
+                                    >
+                                        Hold
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Recall Modal */}
+                {showRecallModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowRecallModal(false)}>
+                        <div className="bg-white rounded-xl w-full max-w-2xl m-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between p-6 border-b border-pos-border">
+                                <h3 className="text-lg font-semibold text-pos-text">Held Transactions</h3>
+                                <button
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+                                    onClick={() => setShowRecallModal(false)}
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-6">
+                                {heldTransactions.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                        <LayersIcon />
+                                        <p className="mt-4 text-sm">No held transactions</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {heldTransactions.map(held => {
+                                            const heldSubtotal = held.items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+                                            const heldTotal = Math.max(heldSubtotal - (parseFloat(held.discount) || 0), 0)
+
+                                            return (
+                                                <div key={held.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <ClockIcon />
+                                                                <span className="text-sm text-gray-500">{getTimeAgo(held.holdTime)}</span>
+                                                            </div>
+                                                            {held.holdNote && (
+                                                                <p className="text-sm font-medium text-pos-text mb-1">{held.holdNote}</p>
+                                                            )}
+                                                            <p className="text-xs text-gray-500">by {held.cashierName}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-sm text-gray-600">{held.items.length} items</p>
+                                                            <p className="text-base font-semibold text-pos-text">KSh {heldTotal.toFixed(2)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            className="flex-1 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text transition-colors text-sm font-medium"
+                                                            onClick={() => handleRecallTransaction(held.id)}
+                                                        >
+                                                            Recall
+                                                        </button>
+                                                        <button
+                                                            className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium"
+                                                            onClick={() => handleDeleteHeldTransaction(held.id)}
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )
