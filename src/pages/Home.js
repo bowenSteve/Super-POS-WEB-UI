@@ -14,22 +14,34 @@ function Home() {
     const [lowStockCount, setLowStockCount] = useState(0)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState("")
-    const [selectedDate, setSelectedDate] = useState(new Date())
-    const dateInputRef = useRef(null)
+    const [dateFrom, setDateFrom] = useState(new Date())
+    const [dateTo, setDateTo] = useState(new Date())
+    const dateFromRef = useRef(null)
+    const dateToRef = useRef(null)
 
+    // Fetch data when component mounts or date range changes
     useEffect(() => {
-        fetchDashboardData()
-    }, [])
+        fetchDashboardData(dateFrom, dateTo)
+    }, [dateFrom, dateTo])
 
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = async (fromDate, toDate) => {
         setLoading(true)
         setError("")
 
         try {
-            const transactionsResponse = await salesAPI.getTransactions()
+            // Format dates for API
+            const dateFromString = fromDate.toISOString().split('T')[0]
+            const dateToString = toDate.toISOString().split('T')[0]
+
+            // Fetch transactions for the date range
+            const transactionsResponse = await salesAPI.getTransactions({
+                date_from: dateFromString,
+                date_to: dateToString
+            })
             const transactionsData = transactionsResponse.data.results || transactionsResponse.data
             setTransactions(Array.isArray(transactionsData) ? transactionsData : [])
 
+            // Fetch all products (for low stock alerts - not date dependent)
             const productsResponse = await productsAPI.getAll()
             const productsData = productsResponse.data.results || productsResponse.data
             const productsList = Array.isArray(productsData) ? productsData : []
@@ -49,6 +61,10 @@ function Home() {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     }
 
+    const formatDateForInput = (dateObj) => {
+        return dateObj.toISOString().split('T')[0]
+    }
+
     const getDisplayDate = (dateObj) => {
         return dateObj.toLocaleDateString('en-GB', {
             day: '2-digit',
@@ -57,29 +73,31 @@ function Home() {
         })
     }
 
-    const targetDateString = selectedDate.toISOString().split('T')[0]
+    const getDateRangeLabel = () => {
+        const fromStr = getDisplayDate(dateFrom)
+        const toStr = getDisplayDate(dateTo)
+        if (fromStr === toStr) {
+            return fromStr
+        }
+        return `${fromStr} - ${toStr}`
+    }
 
-    const todayTransactions = transactions.filter(t => {
-        const transactionDate = new Date(t.created_at).toISOString().split('T')[0]
-        return transactionDate === targetDateString
-    })
+    // Transactions are already filtered by the date range from API
+    const totalSales = transactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
 
-    const todaySales = todayTransactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
-    const totalRevenue = transactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
-
-    // Payment methods breakdown
-    const cashTransactions = todayTransactions.filter(t => t.payment_method === 'cash')
-    const mpesaTransactions = todayTransactions.filter(t => t.payment_method === 'mpesa')
+    // Payment methods breakdown for selected date
+    const cashTransactions = transactions.filter(t => t.payment_method === 'cash')
+    const mpesaTransactions = transactions.filter(t => t.payment_method === 'mpesa')
     const cashTotal = cashTransactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
     const mpesaTotal = mpesaTransactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
 
     // Low stock items
     const lowStockItems = products.filter(p => p.is_low_stock).slice(0, 5)
 
-    // Top selling items (from today's transactions)
+    // Top selling items (from selected date's transactions)
     const getTopSellingItems = () => {
         const itemCounts = {}
-        todayTransactions.forEach(t => {
+        transactions.forEach(t => {
             t.items?.forEach(item => {
                 if (itemCounts[item.product_name]) {
                     itemCounts[item.product_name] += item.quantity
@@ -95,9 +113,29 @@ function Home() {
 
     const topSellingItems = getTopSellingItems()
 
-    const handleDateChange = (e) => {
-        if(e.target.value) {
-            setSelectedDate(new Date(e.target.value))
+    const handleDateFromChange = (e) => {
+        if (e.target.value) {
+            const newFromDate = new Date(e.target.value)
+            // If from date is after to date, swap them
+            if (newFromDate > dateTo) {
+                setDateFrom(dateTo)
+                setDateTo(newFromDate)
+            } else {
+                setDateFrom(newFromDate)
+            }
+        }
+    }
+
+    const handleDateToChange = (e) => {
+        if (e.target.value) {
+            const newToDate = new Date(e.target.value)
+            // If to date is before from date, swap them
+            if (newToDate < dateFrom) {
+                setDateTo(dateFrom)
+                setDateFrom(newToDate)
+            } else {
+                setDateTo(newToDate)
+            }
         }
     }
 
@@ -235,17 +273,32 @@ function Home() {
                                 <BellIcon />
                                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
                             </button>
-                            <div className="relative flex items-center gap-2 cursor-pointer" onClick={() => dateInputRef.current.showPicker()}>
-                                <span className="text-sm font-medium text-pos-text">{getDisplayDate(selectedDate)}</span>
+                            {/* Date Range Picker */}
+                            <div className="flex items-center gap-2 bg-pos-bg px-3 py-1.5 rounded-lg">
                                 <CalendarIcon />
-                                <input
-                                    type="date"
-                                    ref={dateInputRef}
-                                    max={getMaxDate()}
-                                    onChange={handleDateChange}
-                                    value={selectedDate.toISOString().split('T')[0]}
-                                    className="absolute top-0 right-0 w-full h-full opacity-0 cursor-pointer"
-                                />
+                                <div className="relative flex items-center cursor-pointer" onClick={() => dateFromRef.current?.showPicker()}>
+                                    <span className="text-sm font-medium text-pos-text">{getDisplayDate(dateFrom)}</span>
+                                    <input
+                                        type="date"
+                                        ref={dateFromRef}
+                                        max={getMaxDate()}
+                                        onChange={handleDateFromChange}
+                                        value={formatDateForInput(dateFrom)}
+                                        className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                </div>
+                                <span className="text-gray-400">-</span>
+                                <div className="relative flex items-center cursor-pointer" onClick={() => dateToRef.current?.showPicker()}>
+                                    <span className="text-sm font-medium text-pos-text">{getDisplayDate(dateTo)}</span>
+                                    <input
+                                        type="date"
+                                        ref={dateToRef}
+                                        max={getMaxDate()}
+                                        onChange={handleDateToChange}
+                                        value={formatDateForInput(dateTo)}
+                                        className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
+                                    />
+                                </div>
                             </div>
                             <ProfileDropdown />
                         </div>
@@ -273,8 +326,8 @@ function Home() {
                                             <DollarIcon />
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-500">Today's Sales</p>
-                                            <p className="text-2xl font-bold text-pos-text">KSh {todaySales.toFixed(2)}</p>
+                                            <p className="text-sm text-gray-500">Total Sales</p>
+                                            <p className="text-2xl font-bold text-pos-text">KSh {totalSales.toFixed(2)}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -286,7 +339,7 @@ function Home() {
                                         </div>
                                         <div>
                                             <p className="text-sm text-gray-500">Transactions</p>
-                                            <p className="text-2xl font-bold text-pos-text">{todayTransactions.length}</p>
+                                            <p className="text-2xl font-bold text-pos-text">{transactions.length}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -309,8 +362,8 @@ function Home() {
                                             <TrendingUpIcon />
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-500">Total Revenue</p>
-                                            <p className="text-2xl font-bold text-pos-text">KSh {totalRevenue.toFixed(2)}</p>
+                                            <p className="text-sm text-gray-500">Average Sale</p>
+                                            <p className="text-2xl font-bold text-pos-text">KSh {transactions.length > 0 ? (totalSales / transactions.length).toFixed(2) : '0.00'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -389,16 +442,16 @@ function Home() {
                                             </div>
                                             <span className="font-semibold text-pos-text">KSh {mpesaTotal.toFixed(2)}</span>
                                         </div>
-                                        {todaySales > 0 && (
+                                        {totalSales > 0 && (
                                             <div className="pt-3 border-t border-pos-border">
                                                 <div className="flex gap-2">
                                                     <div
                                                         className="h-2 bg-pos-text rounded-full"
-                                                        style={{ width: `${(cashTotal / todaySales) * 100}%` }}
+                                                        style={{ width: `${(cashTotal / totalSales) * 100}%` }}
                                                     ></div>
                                                     <div
                                                         className="h-2 bg-gray-400 rounded-full"
-                                                        style={{ width: `${(mpesaTotal / todaySales) * 100}%` }}
+                                                        style={{ width: `${(mpesaTotal / totalSales) * 100}%` }}
                                                     ></div>
                                                 </div>
                                             </div>
@@ -420,17 +473,17 @@ function Home() {
                                     </div>
                                     <div className="space-y-3">
                                         <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Sales Today</span>
-                                            <span className="font-medium text-pos-text">KSh {todaySales.toFixed(2)}</span>
+                                            <span className="text-gray-500">Sales</span>
+                                            <span className="font-medium text-pos-text">KSh {totalSales.toFixed(2)}</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-500">Transactions</span>
-                                            <span className="font-medium text-pos-text">{todayTransactions.length}</span>
+                                            <span className="font-medium text-pos-text">{transactions.length}</span>
                                         </div>
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-500">Avg. Transaction</span>
                                             <span className="font-medium text-pos-text">
-                                                KSh {todayTransactions.length > 0 ? (todaySales / todayTransactions.length).toFixed(2) : '0.00'}
+                                                KSh {transactions.length > 0 ? (totalSales / transactions.length).toFixed(2) : '0.00'}
                                             </span>
                                         </div>
                                     </div>
@@ -472,13 +525,13 @@ function Home() {
                                 {/* Top Performers */}
                                 <div className="bg-white rounded-xl p-5">
                                     <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-pos-text">Top Selling Today</h3>
+                                        <h3 className="text-lg font-semibold text-pos-text">Top Selling</h3>
                                         <span className="text-pos-text"><StarIcon /></span>
                                     </div>
                                     {topSellingItems.length === 0 ? (
                                         <div className="text-center py-6 text-gray-500">
                                             <CartIcon />
-                                            <p className="mt-2 text-sm">No sales yet today</p>
+                                            <p className="mt-2 text-sm">No sales for this date</p>
                                         </div>
                                     ) : (
                                         <div className="space-y-3">
@@ -515,18 +568,18 @@ function Home() {
                                                 </div>
                                             </div>
                                         )}
-                                        {todayTransactions.length > 0 && (
+                                        {transactions.length > 0 && (
                                             <div className="flex items-start gap-3 p-3 bg-pos-bg rounded-lg">
                                                 <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-pos-text flex-shrink-0 border border-pos-border">
                                                     <DollarIcon />
                                                 </div>
                                                 <div>
                                                     <p className="text-sm font-medium text-pos-text">Sales Update</p>
-                                                    <p className="text-xs text-gray-500">{todayTransactions.length} transactions completed today</p>
+                                                    <p className="text-xs text-gray-500">{transactions.length} transactions ({getDateRangeLabel()})</p>
                                                 </div>
                                             </div>
                                         )}
-                                        {todayTransactions.length === 0 && lowStockCount === 0 && (
+                                        {transactions.length === 0 && lowStockCount === 0 && (
                                             <div className="text-center py-6 text-gray-500">
                                                 <BellIcon />
                                                 <p className="mt-2 text-sm">No new notifications</p>

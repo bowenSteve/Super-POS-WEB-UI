@@ -1,18 +1,34 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "../context/AuthContext"
-import { productsAPI, salesAPI } from "../api/api"
+import { productsAPI, salesAPI, customersAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
 import ToastNotification, { toast } from '../components/ToastNotification'
 
+// Default tax settings
+const defaultTaxSettings = {
+    enabled: true,
+    rate: 16,
+    name: 'VAT',
+    includeInPrice: false,
+    showOnReceipt: true,
+    taxNumber: ''
+}
+
 function Sales() {
-    const { user } = useAuth()
+    const { user, currentShop } = useAuth()
     const [categories, setCategories] = useState([])
     const [selectedCategory, setSelectedCategory] = useState(null)
     const [searchTerm, setSearchTerm] = useState("")
     const [searchResults, setSearchResults] = useState([])
     const [searching, setSearching] = useState(false)
-    const [cart, setCart] = useState([])
-    const [discount, setDiscount] = useState(0)
+    const [cart, setCart] = useState(() => {
+        const saved = localStorage.getItem('pos_cart')
+        return saved ? JSON.parse(saved) : []
+    })
+    const [discount, setDiscount] = useState(() => {
+        const saved = localStorage.getItem('pos_discount')
+        return saved ? parseFloat(saved) : 0
+    })
     const [paymentMethod, setPaymentMethod] = useState("cash")
     const [mpesaReference, setMpesaReference] = useState("")
     const [amountPaid, setAmountPaid] = useState("")
@@ -21,6 +37,33 @@ function Sales() {
     const [showRecallModal, setShowRecallModal] = useState(false)
     const [holdNote, setHoldNote] = useState("")
     const [showHoldModal, setShowHoldModal] = useState(false)
+    const [selectedCustomer, setSelectedCustomer] = useState(() => {
+        const saved = localStorage.getItem('pos_customer')
+        return saved ? JSON.parse(saved) : null
+    })
+    const [showCustomerModal, setShowCustomerModal] = useState(false)
+    const [customerSearch, setCustomerSearch] = useState("")
+    const [customerResults, setCustomerResults] = useState([])
+    const [searchingCustomers, setSearchingCustomers] = useState(false)
+    const [showSplitPayment, setShowSplitPayment] = useState(false)
+    const [splitPayments, setSplitPayments] = useState([])
+    const [currentPayment, setCurrentPayment] = useState({ method: "cash", amount: "", reference: "" })
+    // Tax state - loaded from shop settings
+    const [taxSettings, setTaxSettings] = useState(() => {
+        // Try to get from localStorage first (for initial load)
+        const saved = localStorage.getItem('pos_taxSettings')
+        if (saved) {
+            return { ...defaultTaxSettings, ...JSON.parse(saved) }
+        }
+        return defaultTaxSettings
+    })
+    // Derived values for backward compatibility
+    const taxRate = taxSettings.rate
+    const taxEnabled = taxSettings.enabled
+    const taxName = taxSettings.name || 'VAT'
+
+    // Currency from shop settings
+    const currency = currentShop?.currency || 'KSh'
 
     // Load held transactions from localStorage on mount
     useEffect(() => {
@@ -34,6 +77,37 @@ function Sales() {
             }
         }
     }, [])
+
+    // Save cart to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('pos_cart', JSON.stringify(cart))
+    }, [cart])
+
+    // Save discount to localStorage
+    useEffect(() => {
+        localStorage.setItem('pos_discount', discount.toString())
+    }, [discount])
+
+    // Save selected customer to localStorage
+    useEffect(() => {
+        if (selectedCustomer) {
+            localStorage.setItem('pos_customer', JSON.stringify(selectedCustomer))
+        } else {
+            localStorage.removeItem('pos_customer')
+        }
+    }, [selectedCustomer])
+
+    // Load tax settings from currentShop when it changes
+    useEffect(() => {
+        if (currentShop?.tax_settings) {
+            const shopTaxSettings = { ...defaultTaxSettings, ...currentShop.tax_settings }
+            setTaxSettings(shopTaxSettings)
+            // Also sync to localStorage
+            localStorage.setItem('pos_taxSettings', JSON.stringify(shopTaxSettings))
+            localStorage.setItem('pos_taxRate', shopTaxSettings.rate.toString())
+            localStorage.setItem('pos_taxEnabled', JSON.stringify(shopTaxSettings.enabled))
+        }
+    }, [currentShop])
 
     useEffect(() => {
         fetchCategories()
@@ -99,7 +173,8 @@ function Sales() {
             setCart([...cart, {
                 product: product,
                 quantity: 1,
-                unit_price: parseFloat(product.selling_price)
+                unit_price: parseFloat(product.selling_price),
+                discount: 0
             }])
         }
 
@@ -131,9 +206,40 @@ function Sales() {
         setCart(cart.filter(item => item.product.id !== productId))
     }
 
-    const subtotal = cart.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+    const clearCart = () => {
+        if (cart.length === 0) return
+        if (window.confirm('Are you sure you want to clear all items from the cart?')) {
+            setCart([])
+            setDiscount(0)
+            toast.success('Cart cleared')
+        }
+    }
+
+    const updateItemDiscount = (productId, discountValue) => {
+        const discountAmount = parseFloat(discountValue) || 0
+        const item = cart.find(item => item.product.id === productId)
+
+        if (!item) return
+
+        const itemTotal = item.quantity * item.unit_price
+
+        if (discountAmount > itemTotal) {
+            toast.error("Discount cannot exceed item total")
+            return
+        }
+
+        setCart(cart.map(item =>
+            item.product.id === productId
+                ? { ...item, discount: discountAmount }
+                : item
+        ))
+    }
+
+    const subtotal = cart.reduce((sum, item) => sum + ((item.quantity * item.unit_price) - (item.discount || 0)), 0)
     const discountAmount = parseFloat(discount) || 0
-    const total = Math.max(subtotal - discountAmount, 0)
+    const taxableAmount = Math.max(subtotal - discountAmount, 0)
+    const taxAmount = taxEnabled ? (taxableAmount * taxRate) / 100 : 0
+    const total = taxableAmount + taxAmount
     const change = paymentMethod === "cash" && amountPaid ? Math.max(parseFloat(amountPaid) - total, 0) : 0
 
     const handleCheckout = async () => {
@@ -157,13 +263,15 @@ function Sales() {
         try {
             const transactionData = {
                 cashier: user.id,
+                customer: selectedCustomer?.id || null,
                 items: cart.map(item => ({
                     product: item.product.id,
                     quantity: item.quantity,
-                    unit_price: item.unit_price.toString()
+                    unit_price: item.unit_price.toString(),
+                    discount: (item.discount || 0).toFixed(2)
                 })),
                 subtotal: subtotal.toFixed(2),
-                tax: "0.00",
+                tax: taxAmount.toFixed(2),
                 discount: discountAmount.toFixed(2),
                 total: total.toFixed(2),
                 payment_method: paymentMethod,
@@ -182,6 +290,104 @@ function Sales() {
             setPaymentMethod("cash")
             setMpesaReference("")
             setAmountPaid("")
+            setSelectedCustomer(null)
+
+        } catch (err) {
+            const errorMsg = err.response?.data?.items || err.response?.data?.detail || "Failed to complete transaction"
+            toast.error(errorMsg)
+            console.error(err)
+        } finally {
+            setProcessing(false)
+        }
+    }
+
+    // Split payment functions
+    const handleAddPayment = () => {
+        const paymentAmount = parseFloat(currentPayment.amount)
+
+        if (!paymentAmount || paymentAmount <= 0) {
+            toast.error("Please enter a valid amount")
+            return
+        }
+
+        if (currentPayment.method === "mpesa" && !currentPayment.reference.trim()) {
+            toast.error("M-Pesa reference is required")
+            return
+        }
+
+        const totalPaid = splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0)
+        const remaining = parseFloat((total - totalPaid).toFixed(2))
+
+        // Use a small tolerance for floating-point comparison (0.01 = 1 cent)
+        if (paymentAmount > remaining + 0.01) {
+            toast.error(`Amount exceeds remaining balance of ${currency} ${remaining.toFixed(2)}`)
+            return
+        }
+
+        setSplitPayments([...splitPayments, {
+            method: currentPayment.method,
+            amount: paymentAmount,
+            reference: currentPayment.reference
+        }])
+
+        setCurrentPayment({ method: "cash", amount: "", reference: "" })
+    }
+
+    const handleRemovePayment = (index) => {
+        setSplitPayments(splitPayments.filter((_, i) => i !== index))
+    }
+
+    const handleCompleteSplitPayment = async () => {
+        if (splitPayments.length === 0) {
+            toast.error("Please add at least one payment method")
+            return
+        }
+
+        const totalPaid = parseFloat(splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2))
+
+        // Use small tolerance for floating-point comparison
+        if (totalPaid < total - 0.01) {
+            toast.error(`Incomplete payment. Remaining: ${currency} ${(total - totalPaid).toFixed(2)}`)
+            return
+        }
+
+        setProcessing(true)
+
+        try {
+            const transactionData = {
+                cashier: user.id,
+                customer: selectedCustomer?.id || null,
+                items: cart.map(item => ({
+                    product: item.product.id,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price.toString(),
+                    discount: (item.discount || 0).toFixed(2)
+                })),
+                subtotal: subtotal.toFixed(2),
+                tax: taxAmount.toFixed(2),
+                discount: discountAmount.toFixed(2),
+                total: total.toFixed(2),
+                payment_method: "split",
+                amount_paid: totalPaid.toFixed(2),
+                change_amount: (totalPaid - total).toFixed(2),
+                payment_details: splitPayments,
+                status: "completed"
+            }
+
+            const response = await salesAPI.createTransaction(transactionData)
+
+            toast.success(`Transaction completed! ID: ${response.data.transaction_id}`)
+
+            // Reset everything
+            setCart([])
+            setDiscount(0)
+            setPaymentMethod("cash")
+            setMpesaReference("")
+            setAmountPaid("")
+            setSelectedCustomer(null)
+            setSplitPayments([])
+            setCurrentPayment({ method: "cash", amount: "", reference: "" })
+            setShowSplitPayment(false)
 
         } catch (err) {
             const errorMsg = err.response?.data?.items || err.response?.data?.detail || "Failed to complete transaction"
@@ -208,6 +414,9 @@ function Sales() {
             id: Date.now().toString(),
             items: cart,
             discount: discount,
+            taxSettings: taxSettings,
+            taxEnabled: taxSettings.enabled,
+            taxRate: taxSettings.rate,
             holdTime: new Date().toISOString(),
             holdNote: holdNote.trim(),
             cashierId: user.id,
@@ -241,6 +450,17 @@ function Sales() {
                 // Replace current cart
                 setCart(heldTransaction.items)
                 setDiscount(heldTransaction.discount)
+                // Restore tax settings if available
+                if (heldTransaction.taxSettings) {
+                    setTaxSettings(heldTransaction.taxSettings)
+                } else if (heldTransaction.taxEnabled !== undefined || heldTransaction.taxRate !== undefined) {
+                    // Backward compatibility with old held transactions
+                    setTaxSettings(prev => ({
+                        ...prev,
+                        enabled: heldTransaction.taxEnabled ?? prev.enabled,
+                        rate: heldTransaction.taxRate ?? prev.rate
+                    }))
+                }
             } else {
                 // Merge carts - properly create new objects to ensure React detects changes
                 const mergedCart = []
@@ -274,6 +494,17 @@ function Sales() {
             // Cart is empty, just load held transaction
             setCart(heldTransaction.items)
             setDiscount(heldTransaction.discount)
+            // Restore tax settings if available
+            if (heldTransaction.taxSettings) {
+                setTaxSettings(heldTransaction.taxSettings)
+            } else if (heldTransaction.taxEnabled !== undefined || heldTransaction.taxRate !== undefined) {
+                // Backward compatibility with old held transactions
+                setTaxSettings(prev => ({
+                    ...prev,
+                    enabled: heldTransaction.taxEnabled ?? prev.enabled,
+                    rate: heldTransaction.taxRate ?? prev.rate
+                }))
+            }
         }
 
         // Remove from held transactions
@@ -310,6 +541,42 @@ function Sales() {
         if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
         const diffDays = Math.floor(diffHours / 24)
         return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+    }
+
+    // Search customers
+    const handleCustomerSearch = async (term) => {
+        setCustomerSearch(term)
+        if (term.length < 2) {
+            setCustomerResults([])
+            return
+        }
+
+        setSearchingCustomers(true)
+
+        try {
+            const response = await customersAPI.getAll({ search: term, is_active: true })
+            setCustomerResults(response.data.results || response.data)
+        } catch (err) {
+            toast.error("Failed to search customers")
+            console.error(err)
+        } finally {
+            setSearchingCustomers(false)
+        }
+    }
+
+    // Select customer
+    const handleSelectCustomer = (customer) => {
+        setSelectedCustomer(customer)
+        setShowCustomerModal(false)
+        setCustomerSearch("")
+        setCustomerResults([])
+        toast.success(`Customer ${customer.name} selected`)
+    }
+
+    // Clear customer selection
+    const handleClearCustomer = () => {
+        setSelectedCustomer(null)
+        toast.success("Customer cleared")
     }
 
     // SVG Icons
@@ -514,7 +781,7 @@ function Sales() {
                                         <h4 className="font-medium text-pos-text text-sm truncate">{product.name}</h4>
                                         <p className="text-xs text-gray-500 mb-2">{product.sku}</p>
                                         <div className="flex items-center justify-between">
-                                            <span className="font-semibold text-pos-text">KSh {product.selling_price}</span>
+                                            <span className="font-semibold text-pos-text">{currency} {product.selling_price}</span>
                                             <span className={`text-xs ${product.is_low_stock ? 'text-yellow-600' : 'text-gray-500'}`}>
                                                 {product.stock_quantity} in stock
                                             </span>
@@ -533,7 +800,7 @@ function Sales() {
                                 <h2 className="font-semibold text-pos-text">Cart</h2>
                                 <span className="text-sm text-gray-500">{cart.length} items</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                                 <button
                                     className="relative p-2 text-gray-600 hover:text-pos-primary hover:bg-pos-hover rounded-lg transition-colors"
                                     onClick={() => setShowRecallModal(true)}
@@ -554,7 +821,46 @@ function Sales() {
                                 >
                                     <PauseIcon />
                                 </button>
+                                <button
+                                    className="p-2 text-gray-600 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={clearCart}
+                                    disabled={cart.length === 0}
+                                    title="Clear cart"
+                                >
+                                    <TrashIcon />
+                                </button>
                             </div>
+                        </div>
+
+                        {/* Customer Selection */}
+                        <div className="px-5 py-3 border-b border-pos-border">
+                            {selectedCustomer ? (
+                                <div className="flex items-center justify-between p-3 bg-pos-hover rounded-lg">
+                                    <div className="flex items-center gap-2">
+                                        <UserIcon />
+                                        <div>
+                                            <p className="text-sm font-medium text-pos-text">{selectedCustomer.name}</p>
+                                            {selectedCustomer.phone && (
+                                                <p className="text-xs text-gray-500">{selectedCustomer.phone}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        className="text-xs text-red-600 hover:text-red-700 font-medium"
+                                        onClick={handleClearCustomer}
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-pos-primary hover:text-pos-primary transition-colors"
+                                    onClick={() => setShowCustomerModal(true)}
+                                >
+                                    <UserIcon />
+                                    <span className="text-sm font-medium">Add Customer (Optional)</span>
+                                </button>
+                            )}
                         </div>
 
                         {cart.length === 0 ? (
@@ -571,52 +877,74 @@ function Sales() {
                             <>
                                 {/* Cart Items */}
                                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                    {cart.map(item => (
-                                        <div key={item.product.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="font-medium text-pos-text text-sm truncate">{item.product.name}</h4>
-                                                <p className="text-sm text-gray-500">KSh {item.unit_price.toFixed(2)}</p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center bg-white rounded-lg border border-pos-border">
-                                                    <button
-                                                        className="p-2 text-gray-500 hover:text-pos-text transition-colors"
-                                                        onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                                                    >
-                                                        <MinusIcon />
-                                                    </button>
-                                                    <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
-                                                    <button
-                                                        className="p-2 text-gray-500 hover:text-pos-text transition-colors"
-                                                        onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                                    >
-                                                        <PlusIcon />
-                                                    </button>
+                                    {cart.map(item => {
+                                        const itemTotal = (item.quantity * item.unit_price) - (item.discount || 0)
+                                        return (
+                                            <div key={item.product.id} className="p-3 bg-gray-50 rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-medium text-pos-text text-sm truncate">{item.product.name}</h4>
+                                                        <p className="text-sm text-gray-500">{currency} {item.unit_price.toFixed(2)} x {item.quantity}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex items-center bg-white rounded-lg border border-pos-border">
+                                                            <button
+                                                                className="p-2 text-gray-500 hover:text-pos-text transition-colors"
+                                                                onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                                                            >
+                                                                <MinusIcon />
+                                                            </button>
+                                                            <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                                                            <button
+                                                                className="p-2 text-gray-500 hover:text-pos-text transition-colors"
+                                                                onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                                                            >
+                                                                <PlusIcon />
+                                                            </button>
+                                                        </div>
+                                                        <span className="w-20 text-right text-sm font-medium text-pos-text">
+                                                            {currency} {itemTotal.toFixed(2)}
+                                                        </span>
+                                                        <button
+                                                            className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                                                            onClick={() => removeFromCart(item.product.id)}
+                                                        >
+                                                            <TrashIcon />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <span className="w-20 text-right text-sm font-medium text-pos-text">
-                                                    KSh {(item.quantity * item.unit_price).toFixed(2)}
-                                                </span>
-                                                <button
-                                                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                                                    onClick={() => removeFromCart(item.product.id)}
-                                                >
-                                                    <TrashIcon />
-                                                </button>
+                                                {/* Item Discount */}
+                                                <div className="mt-2 flex items-center justify-between text-xs">
+                                                    <span className="text-gray-500">Item Discount:</span>
+                                                    <div className="flex items-center bg-white rounded border border-gray-300 overflow-hidden">
+                                                        <span className="px-2 text-gray-500">KSh</span>
+                                                        <input
+                                                            type="number"
+                                                            value={item.discount || ''}
+                                                            onChange={(e) => updateItemDiscount(item.product.id, e.target.value)}
+                                                            placeholder="0.00"
+                                                            min="0"
+                                                            max={item.quantity * item.unit_price}
+                                                            step="0.01"
+                                                            className="w-16 py-1 pr-1 text-xs text-right bg-transparent focus:outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
 
                                 {/* Cart Summary */}
                                 <div className="border-t border-pos-border p-4 space-y-3">
                                     <div className="flex justify-between text-sm">
                                         <span className="text-gray-600">Subtotal</span>
-                                        <span className="text-pos-text">KSh {subtotal.toFixed(2)}</span>
+                                        <span className="text-pos-text">{currency} {subtotal.toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="text-gray-600">Discount</span>
                                         <div className="flex items-center bg-gray-50 rounded-lg border border-pos-border overflow-hidden">
-                                            <span className="px-2 text-gray-500 text-sm">KSh</span>
+                                            <span className="px-2 text-gray-500 text-sm">{currency}</span>
                                             <input
                                                 type="number"
                                                 value={discount}
@@ -628,9 +956,24 @@ function Sales() {
                                             />
                                         </div>
                                     </div>
+                                    {/* Tax */}
+                                    <div className="flex justify-between items-center text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <label className="flex items-center gap-1.5 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={taxEnabled}
+                                                    onChange={(e) => setTaxSettings(prev => ({ ...prev, enabled: e.target.checked }))}
+                                                    className="w-3.5 h-3.5 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
+                                                />
+                                                <span className="text-gray-600">Tax ({taxName} {taxRate}%)</span>
+                                            </label>
+                                        </div>
+                                        <span className="text-pos-text">{currency} {taxAmount.toFixed(2)}</span>
+                                    </div>
                                     <div className="flex justify-between text-base font-semibold pt-2 border-t border-pos-border">
                                         <span className="text-pos-text">Total</span>
-                                        <span className="text-pos-text">KSh {total.toFixed(2)}</span>
+                                        <span className="text-pos-text">{currency} {total.toFixed(2)}</span>
                                     </div>
                                 </div>
 
@@ -666,7 +1009,7 @@ function Sales() {
                                             <div>
                                                 <label className="block text-sm text-gray-600 mb-1">Amount Received</label>
                                                 <div className="flex items-center bg-gray-50 rounded-lg border border-pos-border overflow-hidden">
-                                                    <span className="px-3 text-gray-500">KSh</span>
+                                                    <span className="px-3 text-gray-500">{currency}</span>
                                                     <input
                                                         type="number"
                                                         value={amountPaid}
@@ -697,7 +1040,7 @@ function Sales() {
                                             {amountPaid && parseFloat(amountPaid) >= total && (
                                                 <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                                                     <span className="text-sm text-green-700">Change</span>
-                                                    <span className="font-semibold text-green-700">KSh {change.toFixed(2)}</span>
+                                                    <span className="font-semibold text-green-700">{currency} {change.toFixed(2)}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -717,8 +1060,19 @@ function Sales() {
                                     )}
                                 </div>
 
-                                {/* Checkout Button */}
-                                <div className="p-4 pt-0">
+                                {/* Checkout Buttons */}
+                                <div className="p-4 pt-0 space-y-2">
+                                    <button
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-pos-primary text-pos-primary rounded-lg font-medium hover:bg-pos-primary hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onClick={() => setShowSplitPayment(true)}
+                                        disabled={processing || cart.length === 0}
+                                    >
+                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                                            <line x1="2" y1="10" x2="22" y2="10"></line>
+                                        </svg>
+                                        Split Payment
+                                    </button>
                                     <button
                                         className="w-full flex items-center justify-center gap-2 py-3 bg-pos-primary text-white rounded-lg font-medium hover:bg-pos-text/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         onClick={handleCheckout}
@@ -732,7 +1086,7 @@ function Sales() {
                                         ) : (
                                             <>
                                                 <CheckIcon />
-                                                Complete Sale - KSh {total.toFixed(2)}
+                                                Complete Sale - {currency} {total.toFixed(2)}
                                             </>
                                         )}
                                     </button>
@@ -769,9 +1123,16 @@ function Sales() {
                                         maxLength={50}
                                     />
                                 </div>
-                                <div className="bg-gray-50 p-3 rounded-lg">
-                                    <div className="text-sm text-gray-600 mb-1">Items: {cart.length}</div>
-                                    <div className="text-sm font-medium text-pos-text">Total: KSh {total.toFixed(2)}</div>
+                                <div className="bg-gray-50 p-3 rounded-lg space-y-1">
+                                    <div className="text-sm text-gray-600">Items: {cart.length}</div>
+                                    <div className="text-sm text-gray-600">Subtotal: {currency} {subtotal.toFixed(2)}</div>
+                                    {discountAmount > 0 && (
+                                        <div className="text-sm text-gray-600">Discount: -{currency} {discountAmount.toFixed(2)}</div>
+                                    )}
+                                    {taxEnabled && taxAmount > 0 && (
+                                        <div className="text-sm text-gray-600">{taxName} ({taxRate}%): {currency} {taxAmount.toFixed(2)}</div>
+                                    )}
+                                    <div className="text-sm font-medium text-pos-text pt-1 border-t border-gray-200">Total: {currency} {total.toFixed(2)}</div>
                                 </div>
                                 <div className="flex gap-3">
                                     <button
@@ -817,8 +1178,11 @@ function Sales() {
                                 ) : (
                                     <div className="space-y-3">
                                         {heldTransactions.map(held => {
-                                            const heldSubtotal = held.items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
-                                            const heldTotal = Math.max(heldSubtotal - (parseFloat(held.discount) || 0), 0)
+                                            const heldSubtotal = held.items.reduce((sum, item) => sum + ((item.quantity * item.unit_price) - (item.discount || 0)), 0)
+                                            const heldDiscount = parseFloat(held.discount) || 0
+                                            const heldTaxable = Math.max(heldSubtotal - heldDiscount, 0)
+                                            const heldTaxAmount = held.taxEnabled ? (heldTaxable * (held.taxRate || 16)) / 100 : 0
+                                            const heldTotal = heldTaxable + heldTaxAmount
 
                                             return (
                                                 <div key={held.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
@@ -835,7 +1199,10 @@ function Sales() {
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="text-sm text-gray-600">{held.items.length} items</p>
-                                                            <p className="text-base font-semibold text-pos-text">KSh {heldTotal.toFixed(2)}</p>
+                                                            {held.taxEnabled && heldTaxAmount > 0 && (
+                                                                <p className="text-xs text-gray-500">incl. {held.taxSettings?.name || taxName} {held.taxRate || taxRate}%</p>
+                                                            )}
+                                                            <p className="text-base font-semibold text-pos-text">{currency} {heldTotal.toFixed(2)}</p>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -857,6 +1224,258 @@ function Sales() {
                                         })}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Customer Selection Modal */}
+                {showCustomerModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCustomerModal(false)}>
+                        <div className="bg-white rounded-xl w-full max-w-lg m-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between p-6 border-b border-pos-border">
+                                <h3 className="text-lg font-semibold text-pos-text">Select Customer</h3>
+                                <button
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+                                    onClick={() => setShowCustomerModal(false)}
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+
+                            {/* Search Input */}
+                            <div className="p-6 border-b border-pos-border">
+                                <div className="relative">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                        <SearchIcon />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="w-full pl-10 pr-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                        placeholder="Search by name, email, or phone..."
+                                        value={customerSearch}
+                                        onChange={(e) => handleCustomerSearch(e.target.value)}
+                                        autoFocus
+                                    />
+                                    {searchingCustomers && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            <div className="w-5 h-5 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Customer Results */}
+                            <div className="flex-1 overflow-y-auto p-6">
+                                {customerSearch.length < 2 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                        <UserIcon />
+                                        <p className="mt-4 text-sm">Type to search for customers</p>
+                                    </div>
+                                ) : searchingCustomers ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                        <div className="w-8 h-8 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
+                                        <p className="mt-4 text-sm">Searching...</p>
+                                    </div>
+                                ) : customerResults.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                        <UserIcon />
+                                        <p className="mt-4 text-sm">No customers found</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {customerResults.map(customer => (
+                                            <div
+                                                key={customer.id}
+                                                className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                                                onClick={() => handleSelectCustomer(customer)}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <p className="font-medium text-pos-text">{customer.name}</p>
+                                                        {customer.email && (
+                                                            <p className="text-sm text-gray-600 mt-1">{customer.email}</p>
+                                                        )}
+                                                        {customer.phone && (
+                                                            <p className="text-sm text-gray-600 mt-1">{customer.phone}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-right text-xs text-gray-500">
+                                                        <p>{customer.total_transactions} sales</p>
+                                                        <p className="mt-1">{currency} {parseFloat(customer.total_purchases || 0).toFixed(2)}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Split Payment Modal */}
+                {showSplitPayment && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowSplitPayment(false)}>
+                        <div className="bg-white rounded-xl p-6 w-full max-w-2xl m-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-pos-text">Split Payment</h3>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                        Total Amount: {currency} {total.toFixed(2)}
+                                        {taxEnabled && taxAmount > 0 && (
+                                            <span className="text-gray-500"> (incl. {taxName} {taxRate}%: {currency} {taxAmount.toFixed(2)})</span>
+                                        )}
+                                    </p>
+                                </div>
+                                <button
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+                                    onClick={() => setShowSplitPayment(false)}
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+
+                            {/* Payment Summary */}
+                            <div className="grid grid-cols-3 gap-4 mb-6">
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                    <p className="text-sm text-gray-600 font-medium mb-1">Total {taxEnabled && taxAmount > 0 && `(incl. ${taxName})`}</p>
+                                    <p className="text-xl font-bold text-gray-900">{currency} {total.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-green-50 rounded-lg p-4">
+                                    <p className="text-sm text-green-600 font-medium mb-1">Paid</p>
+                                    <p className="text-xl font-bold text-green-900">
+                                        {currency} {splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                    <p className="text-sm text-gray-600 font-medium mb-1">Remaining</p>
+                                    <p className="text-xl font-bold text-gray-900">
+                                        {currency} {(total - splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0)).toFixed(2)}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Payment List */}
+                            {splitPayments.length > 0 && (
+                                <div className="mb-6">
+                                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Payments Added</h4>
+                                    <div className="space-y-2">
+                                        {splitPayments.map((payment, index) => (
+                                            <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                                                <div className="flex-1">
+                                                    <p className="font-medium text-gray-900">
+                                                        {payment.method === 'cash' ? 'Cash' : 'M-Pesa'}
+                                                    </p>
+                                                    {payment.reference && (
+                                                        <p className="text-sm text-gray-600">Ref: {payment.reference}</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <p className="font-semibold text-gray-900">{currency} {parseFloat(payment.amount).toFixed(2)}</p>
+                                                    <button
+                                                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                                                        onClick={() => handleRemovePayment(index)}
+                                                    >
+                                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M18 6L6 18M6 6l12 12"></path>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Add Payment Form */}
+                            {parseFloat(splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2)) < total - 0.01 && (
+                                <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                                    <h4 className="text-sm font-semibold text-gray-700 mb-4">Add Payment</h4>
+
+                                    {/* Payment Method */}
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                className={`py-2.5 px-4 rounded-lg border-2 font-medium transition-colors ${
+                                                    currentPayment.method === 'cash'
+                                                        ? 'border-pos-primary bg-pos-primary text-white'
+                                                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                                                }`}
+                                                onClick={() => setCurrentPayment({ ...currentPayment, method: 'cash', reference: '' })}
+                                            >
+                                                Cash
+                                            </button>
+                                            <button
+                                                className={`py-2.5 px-4 rounded-lg border-2 font-medium transition-colors ${
+                                                    currentPayment.method === 'mpesa'
+                                                        ? 'border-pos-primary bg-pos-primary text-white'
+                                                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                                                }`}
+                                                onClick={() => setCurrentPayment({ ...currentPayment, method: 'mpesa' })}
+                                            >
+                                                M-Pesa
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Amount */}
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                            value={currentPayment.amount}
+                                            onChange={(e) => setCurrentPayment({ ...currentPayment, amount: e.target.value })}
+                                            placeholder="0.00"
+                                            step="0.01"
+                                            min="0"
+                                        />
+                                    </div>
+
+                                    {/* M-Pesa Reference */}
+                                    {currentPayment.method === 'mpesa' && (
+                                        <div className="mb-4">
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">M-Pesa Reference</label>
+                                            <input
+                                                type="text"
+                                                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                                value={currentPayment.reference}
+                                                onChange={(e) => setCurrentPayment({ ...currentPayment, reference: e.target.value.toUpperCase() })}
+                                                placeholder="e.g., QH12ABC34D"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <button
+                                        className="w-full py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                                        onClick={handleAddPayment}
+                                    >
+                                        Add Payment
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Complete Button */}
+                            <div className="flex gap-3">
+                                <button
+                                    className="flex-1 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                                    onClick={() => {
+                                        setShowSplitPayment(false)
+                                        setSplitPayments([])
+                                        setCurrentPayment({ method: 'cash', amount: '', reference: '' })
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="flex-1 py-3 bg-pos-primary text-white rounded-lg font-medium hover:bg-pos-text/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={handleCompleteSplitPayment}
+                                    disabled={processing || splitPayments.length === 0 || parseFloat(splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2)) < total - 0.01}
+                                >
+                                    {processing ? 'Processing...' : 'Complete Transaction'}
+                                </button>
                             </div>
                         </div>
                     </div>

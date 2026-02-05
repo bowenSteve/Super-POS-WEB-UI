@@ -87,7 +87,7 @@ export const shopsAPI = {
   getAll: (params) => api.get('/shops/', { params }),
   getById: (id) => api.get(`/shops/${id}/`),
   create: (data) => api.post('/shops/', data),
-  update: (id, data) => api.put(`/shops/${id}/`, data),
+  update: (id, data) => api.patch(`/shops/${id}/`, data),
   getMembers: (shopId) => api.get(`/shops/${shopId}/members/`),
   inviteStaff: (shopId, data) => api.post(`/shops/${shopId}/invite/`, data),
   removeMember: (shopId, userId) => api.post(`/shops/${shopId}/remove_member/`, { user_id: userId }),
@@ -104,6 +104,20 @@ export const productsAPI = {
   delete: (id) => api.delete(`/products/${id}/`),
   getCategories: () => api.get('/products/categories/'),
   createCategory: (data) => api.post('/products/categories/', data),
+  importProducts: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/products/import_products/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  downloadSample: () => {
+    return api.get('/products/download_sample/', {
+      responseType: 'blob',
+    });
+  },
 };
 
 // Sales API calls
@@ -111,6 +125,23 @@ export const salesAPI = {
   getTransactions: (params) => api.get('/sales/transactions/', { params }),
   getTransactionById: (id) => api.get(`/sales/transactions/${id}/`),
   createTransaction: (data) => api.post('/sales/transactions/', data),
+  exportPDF: (dateFrom, dateTo) => api.get('/sales/transactions/export_pdf/', {
+    params: { date_from: dateFrom, date_to: dateTo },
+    responseType: 'blob',
+  }),
+  // Refund API calls
+  createRefund: (transactionId, data) => api.post(`/sales/transactions/${transactionId}/refund/`, data),
+  getRefunds: (transactionId) => api.get(`/sales/transactions/${transactionId}/refunds/`),
+  // Shift API calls
+  getCurrentShift: () => api.get('/sales/shifts/current/'),
+  getShifts: (params) => api.get('/sales/shifts/', { params }),
+  getShiftById: (id) => api.get(`/sales/shifts/${id}/`),
+  openShift: (data) => api.post('/sales/shifts/open/', data),
+  closeShift: (id, data) => api.post(`/sales/shifts/${id}/close/`, data),
+  getShiftReport: (id) => api.get(`/sales/shifts/${id}/report/`),
+  exportShiftPDF: (id) => api.get(`/sales/shifts/${id}/export_pdf/`, {
+    responseType: 'blob',
+  }),
 };
 
 // Customers API calls
@@ -127,6 +158,14 @@ export const inventoryAPI = {
   getMovements: (params) => api.get('/inventory/movements/', { params }),
   createMovement: (data) => api.post('/inventory/movements/', data),
   getAlerts: (params) => api.get('/inventory/alerts/', { params }),
+};
+
+// Reports API calls
+export const reportsAPI = {
+  getSalesSummary: (params) => api.get('/reports/sales-summary/', { params }),
+  getSalesTrend: (params) => api.get('/reports/sales-trend/', { params }),
+  getTopProducts: (params) => api.get('/reports/top-products/', { params }),
+  getPaymentBreakdown: (params) => api.get('/reports/payment-breakdown/', { params }),
 };
 
 export default api;

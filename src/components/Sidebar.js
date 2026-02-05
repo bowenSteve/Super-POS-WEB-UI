@@ -1,10 +1,15 @@
+import { useState } from "react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
+import { useShift } from "../context/ShiftContext"
 import { usePermissions } from "../hooks/usePermissions"
+import ShiftModal from "./ShiftModal"
 
 function Sidebar() {
     const navigate = useNavigate()
     const { logout } = useAuth()
+    const { currentShift, isShiftOpen } = useShift()
+    const [showShiftModal, setShowShiftModal] = useState(false)
     const {
         canAccessDashboard,
         canAccessPOS,
@@ -17,6 +22,12 @@ function Sidebar() {
     const handleLogout = () => {
         logout()
         navigate('/login')
+    }
+
+    const formatShiftTime = (dateString) => {
+        if (!dateString) return ''
+        const date = new Date(dateString)
+        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     }
 
     const navLinkClass = ({ isActive }) =>
@@ -97,6 +108,35 @@ function Sidebar() {
                 )}
             </nav>
 
+            {/* Shift Status */}
+            <div className="p-3 border-t border-pos-border">
+                <button
+                    onClick={() => setShowShiftModal(true)}
+                    className={`w-full p-3 rounded-lg transition-colors ${
+                        isShiftOpen
+                            ? 'bg-green-50 hover:bg-green-100'
+                            : 'bg-gray-50 hover:bg-gray-100'
+                    }`}
+                >
+                    <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${isShiftOpen ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                        <span className={`text-xs font-medium ${isShiftOpen ? 'text-green-700' : 'text-gray-600'}`}>
+                            {isShiftOpen ? 'Shift Open' : 'No Shift'}
+                        </span>
+                    </div>
+                    {isShiftOpen && currentShift && (
+                        <div className="mt-1.5 text-left">
+                            <p className="text-xs text-gray-500">
+                                Started: {formatShiftTime(currentShift.started_at)}
+                            </p>
+                        </div>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                        {isShiftOpen ? 'Click to close shift' : 'Click to open shift'}
+                    </p>
+                </button>
+            </div>
+
             <div className="p-3 border-t border-pos-border space-y-1">
                 {canAccessSettings && (
                     <NavLink to="/settings" className={navLinkClass}>
@@ -119,6 +159,12 @@ function Sidebar() {
                     <span className="text-sm">Logout</span>
                 </button>
             </div>
+
+            {/* Shift Modal */}
+            <ShiftModal
+                isOpen={showShiftModal}
+                onClose={() => setShowShiftModal(false)}
+            />
         </aside>
     )
 }

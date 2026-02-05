@@ -95,6 +95,20 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('current_shop', JSON.stringify(shopData))
     }
 
+    // Update current shop with new data (preserves role from membership)
+    const updateCurrentShop = (updatedShopData) => {
+        if (!currentShop) return
+
+        const updatedShop = {
+            ...currentShop,
+            ...updatedShopData,
+            // Always preserve the role from membership
+            role: currentShop.role
+        }
+        setCurrentShop(updatedShop)
+        localStorage.setItem('current_shop', JSON.stringify(updatedShop))
+    }
+
     const login = async (credentials) => {
         try {
             const response = await authAPI.login(credentials)
@@ -169,6 +183,7 @@ export const AuthProvider = ({ children }) => {
         currentShop,
         loadingShops,
         switchShop,
+        updateCurrentShop,
         fetchUserShops
     }
 

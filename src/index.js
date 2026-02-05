@@ -5,13 +5,16 @@ import reportWebVitals from './reportWebVitals';
 import routes from './routes';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { ShiftProvider } from './context/ShiftContext';
 
 
 const router = createBrowserRouter(routes)
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <AuthProvider>
-    <RouterProvider router={router} />
+    <ShiftProvider>
+      <RouterProvider router={router} />
+    </ShiftProvider>
   </AuthProvider>
 );
 

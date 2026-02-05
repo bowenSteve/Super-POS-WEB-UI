@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuth } from "../context/AuthContext"
 import { productsAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
 import ProfileDropdown from "../components/ProfileDropdown"
+import ToastNotification, { toast } from '../components/ToastNotification'
 
 function Inventory() {
     const { currentShop } = useAuth()
@@ -17,10 +18,11 @@ function Inventory() {
     const [showRestockModal, setShowRestockModal] = useState(false)
     const [showCategoryModal, setShowCategoryModal] = useState(false)
     const [selectedProduct, setSelectedProduct] = useState(null)
-    const [error, setError] = useState("")
-    const [success, setSuccess] = useState("")
     const [categoryFormData, setCategoryFormData] = useState({ name: "", description: "" })
-
+    const [importing, setImporting] = useState(false)
+    const [importResults, setImportResults] = useState(null)
+    const [showImportModal, setShowImportModal] = useState(false)
+    const fileInputRef = useRef(null) 
     const [formData, setFormData] = useState({
         name: "",
         sku: "",
@@ -46,8 +48,10 @@ function Inventory() {
             const productsData = response.data.results || response.data
             setProducts(Array.isArray(productsData) ? productsData : [])
         } catch (err) {
-            setError("Failed to fetch products")
-            console.error(err)
+            const errorMsg = err.response?.data?.detail || err.response?.data?.error || "Failed to fetch products"
+            toast.error(errorMsg)
+            console.error('Fetch products error:', err.response || err)
+            setProducts([])
         } finally {
             setLoading(false)
         }
@@ -60,6 +64,7 @@ function Inventory() {
             setCategories(Array.isArray(categoriesData) ? categoriesData : [])
         } catch (err) {
             console.error("Failed to fetch categories", err)
+            toast.error("Failed to fetch categories")
         }
     }
 
@@ -81,11 +86,10 @@ function Inventory() {
 
     const handleAddProduct = async (e) => {
         e.preventDefault()
-        setError("")
 
         try {
             await productsAPI.create(formData)
-            setSuccess("Product added successfully!")
+            toast.success("Product added successfully!")
             setShowAddModal(false)
             setFormData({
                 name: "",
@@ -98,33 +102,29 @@ function Inventory() {
                 description: ""
             })
             fetchProducts()
-            setTimeout(() => setSuccess(""), 3000)
         } catch (err) {
             const errorMsg = err.response?.data?.sku?.[0] || err.response?.data?.detail || "Failed to add product"
-            setError(errorMsg)
+            toast.error(errorMsg)
         }
     }
 
     const handleEditProduct = async (e) => {
         e.preventDefault()
-        setError("")
 
         try {
             await productsAPI.update(selectedProduct.id, formData)
-            setSuccess("Product updated successfully!")
+            toast.success("Product updated successfully!")
             setShowEditModal(false)
             setSelectedProduct(null)
             fetchProducts()
-            setTimeout(() => setSuccess(""), 3000)
         } catch (err) {
             const errorMsg = err.response?.data?.detail || "Failed to update product"
-            setError(errorMsg)
+            toast.error(errorMsg)
         }
     }
 
     const handleRestock = async (e) => {
         e.preventDefault()
-        setError("")
 
         const newStock = parseInt(selectedProduct.stock_quantity) + parseInt(restockAmount)
 
@@ -132,17 +132,94 @@ function Inventory() {
             await productsAPI.update(selectedProduct.id, {
                 stock_quantity: newStock
             })
-            setSuccess(`Restocked ${selectedProduct.name} successfully!`)
+            toast.success(`Restocked ${selectedProduct.name} successfully!`)
             setShowRestockModal(false)
             setSelectedProduct(null)
             setRestockAmount("")
             fetchProducts()
-            setTimeout(() => setSuccess(""), 3000)
         } catch (err) {
-            setError("Failed to restock product")
+            toast.error("Failed to restock product")
+        }
+    }
+    // Handle download sample Excel
+    const handleDownloadSample = async () => {
+        try {
+            toast.loading('Preparing sample file...', { id: 'download-toast' })
+            const response = await productsAPI.downloadSample()
+
+            // Create a blob from the response
+            const blob = new Blob([response.data], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            })
+
+            // Create a download link and trigger it
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'product_import_sample.xlsx'
+            document.body.appendChild(link)
+            link.click()
+
+            // Cleanup
+            window.URL.revokeObjectURL(url)
+            document.body.removeChild(link)
+
+            toast.success('Sample file downloaded successfully!', { id: 'download-toast' })
+        } catch (error) {
+            toast.error('Failed to download sample file', { id: 'download-toast' })
+            console.error('Download error:', error)
         }
     }
 
+    // Handle import click
+    const handleImportClick = () => {
+        if (!currentShop) {
+            toast.error("Please select a shop to import products")
+            return
+        }
+        // Trigger the hidden file input
+        fileInputRef.current.click()
+    }
+
+    // Handle file selection
+    const handleFileSelect = async (event) => {
+        const file = event.target.files[0]
+        if (!file) return
+
+        // Validate file type
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            toast.error('Please select a valid Excel file (.xlsx or .xls)')
+            event.target.value = '' // Reset input
+            return
+        }
+
+        setImporting(true)
+        toast.loading('Importing products...', { id: 'import-toast' })
+
+        try {
+            const response = await productsAPI.importProducts(file)
+            const results = response.data.results
+
+            setImportResults(results)
+            setShowImportModal(true)
+
+            toast.success(
+                `Import completed! ${results.success.length} products imported, ${results.errors.length} errors`,
+                { id: 'import-toast' }
+            )
+
+            // Refresh products list
+            fetchProducts()
+
+        } catch (error) {
+            const errorMsg = error.response?.data?.error || 'Failed to import products'
+            toast.error(errorMsg, { id: 'import-toast' })
+            console.error('Import error:', error)
+        } finally {
+            setImporting(false)
+            event.target.value = '' // Reset input
+        }
+    }
     const openEditModal = (product) => {
         setSelectedProduct(product)
         setFormData({
@@ -173,18 +250,16 @@ function Inventory() {
 
     const handleCreateCategory = async (e) => {
         e.preventDefault()
-        setError("")
 
         try {
             await productsAPI.createCategory(categoryFormData)
-            setSuccess("Category created successfully!")
+            toast.success("Category created successfully!")
             setShowCategoryModal(false)
             setCategoryFormData({ name: "", description: "" })
             fetchCategories()
-            setTimeout(() => setSuccess(""), 3000)
         } catch (err) {
             const errorMsg = err.response?.data?.name?.[0] || err.response?.data?.detail || "Failed to create category"
-            setError(errorMsg)
+            toast.error(errorMsg)
         }
     }
 
@@ -242,16 +317,42 @@ function Inventory() {
 
     return (
         <div className="flex min-h-screen bg-pos-bg">
+            <ToastNotification />
             <Sidebar />
             <div className="flex-1 flex flex-col">
                 <header className="bg-white px-6 py-4 border-b border-pos-border flex items-center justify-between">
                     <h1 className="text-xl font-semibold text-pos-text">Inventory Management</h1>
                     <div className="flex items-center gap-4">
+                        {/* download excel sample */}
+                        <button
+                            className="inline-flex items-center gap-2 px-4 py-2 border-2 border-pos-primary text-pos-primary rounded-lg hover:bg-pos-primary hover:text-white transition-colors disabled:opacity-50"
+                            onClick={handleDownloadSample}
+                            disabled={importing}
+                        >
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Download Sample
+                        </button>
+                        <button
+                            className="inline-flex items-center gap-2 px-4 py-2 border-2 border-pos-primary text-pos-primary rounded-lg hover:bg-pos-primary hover:text-white transition-colors disabled:opacity-50"
+                            onClick={handleImportClick}
+                            disabled={importing}
+                        >
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 14 12 9 7 14"></polyline>
+                                <line x1="12" y1="9" x2="12" y2="21"></line>
+                            </svg>
+                            {importing ? 'Importing...' : 'Import Excel'}
+                        </button>
                         <button
                             className="inline-flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
                             onClick={() => {
                                 if (!currentShop) {
-                                    setError("Please select a shop from your profile to add products")
+                                    toast.error("Please select a shop from your profile to add products")
                                     return
                                 }
                                 setShowAddModal(true)
@@ -265,23 +366,6 @@ function Inventory() {
                 </header>
 
                 <main className="flex-1 p-6">
-                    {error && (
-                        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                            <AlertIcon />
-                            <span>{error}</span>
-                            <button className="ml-auto text-red-500 hover:text-red-700" onClick={() => setError("")}>
-                                <CloseIcon />
-                            </button>
-                        </div>
-                    )}
-
-                    {success && (
-                        <div className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
-                            <CheckIcon />
-                            <span>{success}</span>
-                        </div>
-                    )}
-
                     {/* Filters */}
                     <div className="bg-white rounded-xl p-4 mb-6">
                         <div className="flex flex-wrap items-center gap-4">
@@ -312,7 +396,7 @@ function Inventory() {
                                 <button
                                     onClick={() => {
                                         if (!currentShop) {
-                                            setError("Please select a shop from your profile to add categories")
+                                            toast.error("Please select a shop from your profile to add categories") // <--- Fixed
                                             return
                                         }
                                         setShowCategoryModal(true)
@@ -387,7 +471,7 @@ function Inventory() {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         {product.is_low_stock ? (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                                                                 Low Stock
                                                             </span>
                                                         ) : (
@@ -423,6 +507,102 @@ function Inventory() {
                         </div>
                     )}
                 </main>
+                {/* Hidden file input */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                />
+
+                {/* Import Results Modal */}
+                {showImportModal && importResults && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowImportModal(false)}>
+                        <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
+                                <h2 className="text-lg font-semibold text-pos-text">Import Results</h2>
+                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowImportModal(false)}>
+                                    <CloseIcon />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6">
+                                {/* Summary */}
+                                <div className="grid grid-cols-3 gap-4 mb-6">
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <p className="text-sm text-gray-600 font-medium mb-1">Total Rows</p>
+                                        <p className="text-2xl font-bold text-gray-900">{importResults.total_rows}</p>
+                                    </div>
+                                    <div className="bg-green-50 rounded-lg p-4">
+                                        <p className="text-sm text-green-600 font-medium mb-1">Successful</p>
+                                        <p className="text-2xl font-bold text-green-900">{importResults.success.length}</p>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <p className="text-sm text-gray-600 font-medium mb-1">Failed</p>
+                                        <p className="text-2xl font-bold text-gray-900">{importResults.errors.length}</p>
+                                    </div>
+                                </div>
+
+                                {/* Success List */}
+                                {importResults.success.length > 0 && (
+                                    <div className="mb-6">
+                                        <h3 className="text-sm font-semibold text-green-700 mb-3 flex items-center gap-2">
+                                            <CheckIcon />
+                                            Successfully Imported ({importResults.success.length})
+                                        </h3>
+                                        <div className="bg-green-50 rounded-lg p-4 max-h-48 overflow-y-auto">
+                                            <div className="space-y-2">
+                                                {importResults.success.map((item, index) => (
+                                                    <div key={index} className="text-sm text-green-800">
+                                                        Row {item.row}: {item.name} (SKU: {item.sku})
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Errors List */}
+                                {importResults.errors.length > 0 && (
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                            <AlertIcon />
+                                            Errors ({importResults.errors.length})
+                                        </h3>
+                                        <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                                            <div className="space-y-3">
+                                                {importResults.errors.map((item, index) => (
+                                                    <div key={index} className="bg-white rounded-lg p-3 border border-gray-200">
+                                                        <p className="text-sm font-medium text-gray-900 mb-1">
+                                                            Row {item.row}
+                                                        </p>
+                                                        <p className="text-sm text-gray-700">{item.error}</p>
+                                                        {item.data && (
+                                                            <p className="text-xs text-gray-600 mt-1">
+                                                                {item.data.sku && `SKU: ${item.data.sku}, `}
+                                                                {item.data.name && `Name: ${item.data.name}`}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3 px-6 py-4 border-t border-pos-border">
+                                <button
+                                    className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
+                                    onClick={() => setShowImportModal(false)}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Add Product Modal */}
                 {showAddModal && (
