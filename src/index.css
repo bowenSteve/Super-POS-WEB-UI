@@ -1,3 +1,71 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Success Animation Keyframes */
+@keyframes confetti {
+    0% {
+        transform: translateY(0) translateX(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(var(--confetti-y, -100px)) translateX(var(--confetti-x, 50px)) rotate(var(--confetti-rotate, 360deg));
+        opacity: 0;
+    }
+}
+
+.animate-confetti {
+    animation: confetti 1s ease-out forwards;
+}
+
+/* Keyboard shortcut hint styling */
+.shortcut-hint {
+    @apply text-xs px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-gray-500 font-mono;
+}
+
+/* Quantity badge pulse */
+@keyframes quantity-pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.animate-quantity-pulse {
+    animation: quantity-pulse 0.3s ease-in-out;
+}
+
+/* Cart item add animation */
+@keyframes slide-in-right {
+    0% {
+        transform: translateX(20px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.animate-slide-in {
+    animation: slide-in-right 0.2s ease-out;
+}
+
+/* Favorite star animation */
+@keyframes star-pop {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.3);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.animate-star-pop {
+    animation: star-pop 0.3s ease-out;
+}

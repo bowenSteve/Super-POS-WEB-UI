@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useAuth } from "../context/AuthContext"
 import { productsAPI, salesAPI, customersAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
 import ToastNotification, { toast } from '../components/ToastNotification'
+import SuccessAnimation from '../components/SuccessAnimation'
+import KeyboardShortcutsHelp from '../components/KeyboardShortcutsHelp'
+import useSoundEffects from '../hooks/useSoundEffects'
 
 // Default tax settings
 const defaultTaxSettings = {
@@ -48,6 +51,23 @@ function Sales() {
     const [showSplitPayment, setShowSplitPayment] = useState(false)
     const [splitPayments, setSplitPayments] = useState([])
     const [currentPayment, setCurrentPayment] = useState({ method: "cash", amount: "", reference: "" })
+
+    // UX Enhancement states
+    const [pendingQuantity, setPendingQuantity] = useState(null) // Quantity-first mode
+    const [showSuccess, setShowSuccess] = useState(false) // Success animation
+    const [successAmount, setSuccessAmount] = useState(0) // Amount for success animation
+    const [favorites, setFavorites] = useState(() => {
+        const saved = localStorage.getItem('pos_favorites')
+        return saved ? JSON.parse(saved) : []
+    })
+    const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+    const searchInputRef = useRef(null)
+    const amountInputRef = useRef(null)
+    const mpesaInputRef = useRef(null)
+
+    // Sound effects
+    const { playAddItem, playSuccess, playError, playRemoveItem, playHold } = useSoundEffects()
+
     // Tax state - loaded from shop settings
     const [taxSettings, setTaxSettings] = useState(() => {
         // Try to get from localStorage first (for initial load)
@@ -113,6 +133,136 @@ function Sales() {
         fetchCategories()
     }, [])
 
+    // Save favorites to localStorage
+    useEffect(() => {
+        localStorage.setItem('pos_favorites', JSON.stringify(favorites))
+    }, [favorites])
+
+    // Keyboard shortcuts handler
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Don't trigger shortcuts when typing in inputs (except for specific keys)
+            const isInputFocused = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)
+            const isModalOpen = showHoldModal || showRecallModal || showCustomerModal || showSplitPayment
+
+            // Handle number keys for quantity-first mode (only when not in input)
+            if (!isInputFocused && !isModalOpen && /^[0-9]$/.test(e.key)) {
+                e.preventDefault()
+                setPendingQuantity(prev => {
+                    const newQty = prev ? parseInt(`${prev}${e.key}`) : parseInt(e.key)
+                    return Math.min(newQty, 999) // Cap at 999
+                })
+                return
+            }
+
+            // Clear pending quantity on Escape
+            if (e.key === 'Escape') {
+                if (pendingQuantity) {
+                    setPendingQuantity(null)
+                    return
+                }
+                // Close modals
+                if (showHoldModal) setShowHoldModal(false)
+                if (showRecallModal) setShowRecallModal(false)
+                if (showCustomerModal) setShowCustomerModal(false)
+                if (showSplitPayment) setShowSplitPayment(false)
+                if (searchTerm) {
+                    setSearchTerm("")
+                    setSearchResults([])
+                }
+                return
+            }
+
+            // Skip other shortcuts if modal is open
+            if (isModalOpen) return
+
+            // F1 - Focus search
+            if (e.key === 'F1') {
+                e.preventDefault()
+                searchInputRef.current?.focus()
+                return
+            }
+
+            // F2 - Cash payment
+            if (e.key === 'F2') {
+                e.preventDefault()
+                setPaymentMethod('cash')
+                setTimeout(() => amountInputRef.current?.focus(), 50)
+                return
+            }
+
+            // F3 - M-Pesa payment
+            if (e.key === 'F3') {
+                e.preventDefault()
+                setPaymentMethod('mpesa')
+                setTimeout(() => mpesaInputRef.current?.focus(), 50)
+                return
+            }
+
+            // F4 - Hold transaction
+            if (e.key === 'F4') {
+                e.preventDefault()
+                if (cart.length > 0) {
+                    setShowHoldModal(true)
+                }
+                return
+            }
+
+            // F5 - Recall transaction
+            if (e.key === 'F5') {
+                e.preventDefault()
+                setShowRecallModal(true)
+                return
+            }
+
+            // Enter - Complete sale (when not in input or when in amount/mpesa input)
+            if (e.key === 'Enter' && cart.length > 0 && !processing) {
+                const activeEl = document.activeElement
+                const isPaymentInput = activeEl === amountInputRef.current || activeEl === mpesaInputRef.current
+
+                if (!isInputFocused || isPaymentInput) {
+                    e.preventDefault()
+                    handleCheckout()
+                    return
+                }
+            }
+
+            // + / = - Increase last item quantity
+            if ((e.key === '+' || e.key === '=') && !isInputFocused && cart.length > 0) {
+                e.preventDefault()
+                const lastItem = cart[cart.length - 1]
+                updateQuantity(lastItem.product.id, lastItem.quantity + 1)
+                return
+            }
+
+            // - - Decrease last item quantity
+            if (e.key === '-' && !isInputFocused && cart.length > 0) {
+                e.preventDefault()
+                const lastItem = cart[cart.length - 1]
+                updateQuantity(lastItem.product.id, lastItem.quantity - 1)
+                return
+            }
+
+            // Delete - Remove last item
+            if (e.key === 'Delete' && !isInputFocused && cart.length > 0) {
+                e.preventDefault()
+                const lastItem = cart[cart.length - 1]
+                removeFromCart(lastItem.product.id)
+                return
+            }
+
+            // ? - Toggle shortcuts help
+            if (e.key === '?' && !isInputFocused) {
+                e.preventDefault()
+                setShowShortcutsHelp(prev => !prev)
+                return
+            }
+        }
+
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [cart, processing, showHoldModal, showRecallModal, showCustomerModal, showSplitPayment, pendingQuantity, searchTerm])
+
     const fetchCategories = async () => {
         try {
             const response = await productsAPI.getCategories()
@@ -165,21 +315,61 @@ function Sales() {
     }
 
     const addToCart = (product) => {
+        const quantityToAdd = pendingQuantity || 1
         const existingItem = cart.find(item => item.product.id === product.id)
 
+        // Check stock
+        const currentQty = existingItem ? existingItem.quantity : 0
+        if (currentQty + quantityToAdd > product.stock_quantity) {
+            toast.error(`Only ${product.stock_quantity} units available for ${product.name}`)
+            playError()
+            setPendingQuantity(null)
+            return
+        }
+
         if (existingItem) {
-            updateQuantity(product.id, existingItem.quantity + 1)
+            updateQuantity(product.id, existingItem.quantity + quantityToAdd)
         } else {
             setCart([...cart, {
                 product: product,
-                quantity: 1,
+                quantity: quantityToAdd,
                 unit_price: parseFloat(product.selling_price),
                 discount: 0
             }])
         }
 
+        // Play sound and clear pending quantity
+        playAddItem()
+        setPendingQuantity(null)
         setSearchTerm("")
         setSearchResults([])
+    }
+
+    // Toggle product as favorite
+    const toggleFavorite = (product) => {
+        setFavorites(prev => {
+            const exists = prev.find(f => f.id === product.id)
+            if (exists) {
+                return prev.filter(f => f.id !== product.id)
+            } else {
+                // Limit to 8 favorites
+                if (prev.length >= 8) {
+                    toast.error("Maximum 8 favorites allowed. Remove one first.")
+                    return prev
+                }
+                return [...prev, {
+                    id: product.id,
+                    name: product.name,
+                    selling_price: product.selling_price,
+                    stock_quantity: product.stock_quantity,
+                    sku: product.sku
+                }]
+            }
+        })
+    }
+
+    const isFavorite = (productId) => {
+        return favorites.some(f => f.id === productId)
     }
 
     const updateQuantity = (productId, newQuantity) => {
@@ -204,6 +394,7 @@ function Sales() {
 
     const removeFromCart = (productId) => {
         setCart(cart.filter(item => item.product.id !== productId))
+        playRemoveItem()
     }
 
     const clearCart = () => {
@@ -283,8 +474,12 @@ function Sales() {
 
             const response = await salesAPI.createTransaction(transactionData)
 
-            toast.success(`Transaction completed! ID: ${response.data.transaction_id}`)
+            // Show success animation and play sound
+            setSuccessAmount(total)
+            setShowSuccess(true)
+            playSuccess()
 
+            // Reset cart after animation starts
             setCart([])
             setDiscount(0)
             setPaymentMethod("cash")
@@ -295,10 +490,17 @@ function Sales() {
         } catch (err) {
             const errorMsg = err.response?.data?.items || err.response?.data?.detail || "Failed to complete transaction"
             toast.error(errorMsg)
+            playError()
             console.error(err)
         } finally {
             setProcessing(false)
         }
+    }
+
+    // Handle success animation complete
+    const handleSuccessComplete = () => {
+        setShowSuccess(false)
+        setSuccessAmount(0)
     }
 
     // Split payment functions
@@ -432,6 +634,7 @@ function Sales() {
         setDiscount(0)
         setHoldNote("")
         setShowHoldModal(false)
+        playHold()
         toast.success(`Transaction held successfully ${holdNote ? `- ${holdNote}` : ''}`)
     }
 
@@ -691,6 +894,15 @@ function Sales() {
         <div className="flex min-h-screen bg-pos-bg">
             <ToastNotification />
             <Sidebar />
+
+            {/* Success Animation */}
+            <SuccessAnimation
+                show={showSuccess}
+                onComplete={handleSuccessComplete}
+                amount={successAmount}
+                currency={currency}
+            />
+
             <div className="flex-1 flex flex-col">
                 {/* Header */}
                 <header className="bg-white px-6 py-4 border-b border-pos-border">
@@ -700,9 +912,10 @@ function Sales() {
                                 <SearchIcon />
                             </div>
                             <input
+                                ref={searchInputRef}
                                 type="text"
                                 className="w-full pl-10 pr-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                placeholder="Search products by name or SKU..."
+                                placeholder="Search products by name or SKU... (F1)"
                                 value={searchTerm}
                                 onChange={(e) => handleSearch(e.target.value)}
                             />
@@ -712,9 +925,30 @@ function Sales() {
                                 </div>
                             )}
                         </div>
-                        <div className="flex items-center gap-2 text-gray-600">
-                            <UserIcon />
-                            <span className="text-sm">{user?.username}</span>
+
+                        {/* Pending Quantity Badge */}
+                        {pendingQuantity && (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg animate-quantity-pulse">
+                                <span className="text-lg font-bold">{pendingQuantity}x</span>
+                                <span className="text-sm">Click product to add</span>
+                                <button
+                                    onClick={() => setPendingQuantity(null)}
+                                    className="ml-2 p-1 hover:bg-white/20 rounded"
+                                    title="Cancel (Esc)"
+                                >
+                                    <XIcon />
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-3">
+                            {/* Keyboard Shortcuts Help */}
+                            <KeyboardShortcutsHelp />
+
+                            <div className="flex items-center gap-2 text-gray-600">
+                                <UserIcon />
+                                <span className="text-sm">{user?.username}</span>
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -750,12 +984,59 @@ function Sales() {
                             ))}
                         </div>
 
+                        {/* Quick Favorites Section */}
+                        {favorites.length > 0 && (
+                            <div className="mb-4">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-yellow-500" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                        </svg>
+                                        Quick Favorites
+                                    </h3>
+                                    <span className="text-xs text-gray-400">{favorites.length}/8</span>
+                                </div>
+                                <div className="flex gap-2 flex-wrap">
+                                    {favorites.map(fav => (
+                                        <button
+                                            key={fav.id}
+                                            onClick={() => addToCart(fav)}
+                                            className="flex items-center gap-2 px-3 py-2 bg-white border border-pos-border rounded-lg hover:bg-pos-hover hover:border-pos-primary transition-colors group"
+                                        >
+                                            <span className="text-sm font-medium text-pos-text truncate max-w-[120px]">
+                                                {fav.name}
+                                            </span>
+                                            <span className="text-xs text-gray-500">
+                                                {currency} {fav.selling_price}
+                                            </span>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    toggleFavorite(fav)
+                                                }}
+                                                className="p-0.5 text-yellow-500 hover:text-yellow-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Remove from favorites"
+                                            >
+                                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                </svg>
+                                            </button>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Products Grid */}
                         <div className="flex-1 overflow-y-auto">
                             {searchResults.length === 0 && !searching && (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
                                     <PackageIcon />
                                     <p className="mt-4 text-sm">Select a category or search for products</p>
+                                    {favorites.length === 0 && (
+                                        <p className="text-xs text-gray-400 mt-2">Tip: Star products to add them to Quick Favorites</p>
+                                    )}
                                 </div>
                             )}
 
@@ -770,11 +1051,42 @@ function Sales() {
                                 {searchResults.map(product => (
                                     <div
                                         key={product.id}
-                                        className={`bg-white rounded-xl p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                                        className={`relative bg-white rounded-xl p-4 cursor-pointer hover:shadow-md transition-shadow group ${
                                             product.is_low_stock ? 'ring-1 ring-yellow-300' : ''
                                         }`}
                                         onClick={() => addToCart(product)}
                                     >
+                                        {/* Favorite Star Button */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                toggleFavorite(product)
+                                            }}
+                                            className={`absolute top-2 right-2 p-1.5 rounded-full transition-all z-10 ${
+                                                isFavorite(product.id)
+                                                    ? 'text-yellow-500 bg-yellow-50'
+                                                    : 'text-gray-300 bg-white/80 opacity-0 group-hover:opacity-100 hover:text-yellow-500 hover:bg-yellow-50'
+                                            }`}
+                                            title={isFavorite(product.id) ? "Remove from favorites" : "Add to favorites"}
+                                        >
+                                            <svg
+                                                className={`w-4 h-4 ${isFavorite(product.id) ? 'animate-star-pop' : ''}`}
+                                                viewBox="0 0 24 24"
+                                                fill={isFavorite(product.id) ? "currentColor" : "none"}
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                            >
+                                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                            </svg>
+                                        </button>
+
+                                        {/* Pending Quantity Indicator */}
+                                        {pendingQuantity && (
+                                            <div className="absolute top-2 left-2 px-2 py-0.5 bg-pos-primary text-white text-xs font-bold rounded-full">
+                                                +{pendingQuantity}
+                                            </div>
+                                        )}
+
                                         <div className="aspect-[4/3] bg-gray-50 rounded-lg flex items-center justify-center mb-3">
                                             <ImageIcon />
                                         </div>
@@ -804,7 +1116,7 @@ function Sales() {
                                 <button
                                     className="relative p-2 text-gray-600 hover:text-pos-primary hover:bg-pos-hover rounded-lg transition-colors"
                                     onClick={() => setShowRecallModal(true)}
-                                    title="Recall held transaction"
+                                    title="Recall held transaction (F5)"
                                 >
                                     <LayersIcon />
                                     {heldTransactions.length > 0 && (
@@ -817,7 +1129,7 @@ function Sales() {
                                     className="p-2 text-gray-600 hover:text-pos-primary hover:bg-pos-hover rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     onClick={() => setShowHoldModal(true)}
                                     disabled={cart.length === 0}
-                                    title="Hold transaction"
+                                    title="Hold transaction (F4)"
                                 >
                                     <PauseIcon />
                                 </button>
@@ -987,9 +1299,13 @@ function Sales() {
                                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
                                             onClick={() => setPaymentMethod('cash')}
+                                            title="Cash payment (F2)"
                                         >
                                             <CashIcon />
                                             Cash
+                                            <kbd className={`ml-1 px-1 py-0.5 text-xs rounded ${
+                                                paymentMethod === 'cash' ? 'bg-white/20' : 'bg-gray-200'
+                                            }`}>F2</kbd>
                                         </button>
                                         <button
                                             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -998,19 +1314,24 @@ function Sales() {
                                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                             }`}
                                             onClick={() => setPaymentMethod('mpesa')}
+                                            title="M-Pesa payment (F3)"
                                         >
                                             <PhoneIcon />
                                             M-Pesa
+                                            <kbd className={`ml-1 px-1 py-0.5 text-xs rounded ${
+                                                paymentMethod === 'mpesa' ? 'bg-white/20' : 'bg-gray-200'
+                                            }`}>F3</kbd>
                                         </button>
                                     </div>
 
                                     {paymentMethod === 'cash' && (
                                         <div className="space-y-3">
                                             <div>
-                                                <label className="block text-sm text-gray-600 mb-1">Amount Received</label>
+                                                <label className="block text-sm text-gray-600 mb-1">Amount Received (F2)</label>
                                                 <div className="flex items-center bg-gray-50 rounded-lg border border-pos-border overflow-hidden">
                                                     <span className="px-3 text-gray-500">{currency}</span>
                                                     <input
+                                                        ref={amountInputRef}
                                                         type="number"
                                                         value={amountPaid}
                                                         onChange={(e) => setAmountPaid(e.target.value)}
@@ -1038,9 +1359,17 @@ function Sales() {
                                                 </button>
                                             </div>
                                             {amountPaid && parseFloat(amountPaid) >= total && (
-                                                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                                                    <span className="text-sm text-green-700">Change</span>
-                                                    <span className="font-semibold text-green-700">{currency} {change.toFixed(2)}</span>
+                                                <div className={`flex justify-between items-center p-3 rounded-lg ${
+                                                    change > 0
+                                                        ? 'bg-amber-50 border border-amber-200'
+                                                        : 'bg-green-50'
+                                                }`}>
+                                                    <span className={`text-sm ${change > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                                                        {change > 0 ? 'Change Due' : 'Exact Amount'}
+                                                    </span>
+                                                    <span className={`font-semibold ${change > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                                                        {currency} {change.toFixed(2)}
+                                                    </span>
                                                 </div>
                                             )}
                                         </div>
@@ -1048,8 +1377,9 @@ function Sales() {
 
                                     {paymentMethod === 'mpesa' && (
                                         <div>
-                                            <label className="block text-sm text-gray-600 mb-1">M-Pesa Reference Code</label>
+                                            <label className="block text-sm text-gray-600 mb-1">M-Pesa Reference Code (F3)</label>
                                             <input
+                                                ref={mpesaInputRef}
                                                 type="text"
                                                 className="w-full px-3 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
                                                 value={mpesaReference}
@@ -1087,6 +1417,7 @@ function Sales() {
                                             <>
                                                 <CheckIcon />
                                                 Complete Sale - {currency} {total.toFixed(2)}
+                                                <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white/20 rounded">Enter</kbd>
                                             </>
                                         )}
                                     </button>
