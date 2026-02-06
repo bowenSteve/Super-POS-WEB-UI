@@ -6,16 +6,19 @@ import routes from './routes';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ShiftProvider } from './context/ShiftContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 
 const router = createBrowserRouter(routes)
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <AuthProvider>
-    <ShiftProvider>
-      <RouterProvider router={router} />
-    </ShiftProvider>
-  </AuthProvider>
+  <ThemeProvider>
+    <AuthProvider>
+      <ShiftProvider>
+        <RouterProvider router={router} />
+      </ShiftProvider>
+    </AuthProvider>
+  </ThemeProvider>
 );
 
 // If you want to start measuring performance in your app, pass a function

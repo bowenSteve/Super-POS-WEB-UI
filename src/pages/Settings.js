@@ -3,8 +3,9 @@ import Sidebar from "../components/Sidebar"
 import ProfileDropdown from "../components/ProfileDropdown"
 import { ProfileSettings, StaffManagement } from "../features/profile"
 import { useAuth } from "../context/AuthContext"
+import { useTheme } from "../context/ThemeContext"
 import { shopsAPI } from "../api/api"
-import { FiUser, FiUsers, FiSettings, FiShoppingBag, FiPercent, FiFileText, FiSave } from 'react-icons/fi'
+import { FiUser, FiUsers, FiSettings, FiShoppingBag, FiPercent, FiFileText, FiSave, FiMoon, FiSun } from 'react-icons/fi'
 import ToastNotification, { toast } from '../components/ToastNotification'
 
 // Default settings
@@ -31,6 +32,7 @@ const defaultReceiptSettings = {
 
 function Settings() {
     const { currentShop, updateCurrentShop } = useAuth()
+    const { darkMode, toggleDarkMode } = useTheme()
     const [activeTab, setActiveTab] = useState('profile')
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -53,6 +55,7 @@ function Settings() {
 
     const tabs = [
         { id: 'profile', label: 'Profile', icon: FiUser },
+        { id: 'appearance', label: 'Appearance', icon: darkMode ? FiMoon : FiSun },
         { id: 'staff', label: 'Staff', icon: FiUsers },
         { id: 'shop', label: 'Shop', icon: FiShoppingBag },
         { id: 'tax', label: 'Tax', icon: FiPercent },
@@ -189,6 +192,97 @@ function Settings() {
             setSaving(false)
         }
     }
+
+    // Appearance Settings Component
+    const AppearanceSettings = () => (
+        <div className="space-y-6">
+            <div className="bg-white dark:bg-dark-card rounded-xl border border-pos-border dark:border-dark-border p-6 transition-colors">
+                <h2 className="text-lg font-semibold text-pos-text dark:text-dark-text mb-6">Appearance Settings</h2>
+
+                {/* Dark Mode Toggle */}
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between p-6 bg-pos-hover dark:bg-dark-hover rounded-xl border border-pos-border dark:border-dark-border transition-colors">
+                        <div className="flex items-center gap-4">
+                            <div className={`p-3 rounded-full ${darkMode ? 'bg-pos-primary/10 dark:bg-dark-primary/20' : 'bg-pos-warning/10'}`}>
+                                {darkMode ? (
+                                    <FiMoon className="w-6 h-6 text-pos-primary dark:text-dark-primary" />
+                                ) : (
+                                    <FiSun className="w-6 h-6 text-pos-warning" />
+                                )}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-pos-text dark:text-dark-text text-lg">Dark Mode</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                    {darkMode ? 'Reduce eye strain in low light' : 'Better visibility in bright environments'}
+                                </p>
+                            </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={darkMode}
+                                onChange={toggleDarkMode}
+                                className="sr-only peer"
+                            />
+                            <div className="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-pos-primary/20 dark:peer-focus:ring-dark-primary/40 rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-pos-primary dark:peer-checked:bg-dark-primary"></div>
+                        </label>
+                    </div>
+
+                    {/* Theme Preview */}
+                    <div className="border border-pos-border dark:border-dark-border rounded-xl overflow-hidden transition-colors">
+                        <div className="bg-pos-primary dark:bg-dark-primary p-4">
+                            <p className="text-white dark:text-dark-bg font-semibold">Theme Preview</p>
+                        </div>
+                        <div className="p-6 bg-white dark:bg-dark-card transition-colors">
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-lg bg-pos-primary dark:bg-dark-primary flex items-center justify-center text-white dark:text-dark-bg font-bold transition-colors">
+                                        POS
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-pos-text dark:text-dark-text transition-colors">Super POS</p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 transition-colors">Your sales, simplified</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="p-4 bg-pos-hover dark:bg-dark-hover rounded-lg border border-pos-border dark:border-dark-border text-center transition-colors">
+                                        <p className="text-2xl font-bold text-pos-text dark:text-dark-text transition-colors">42</p>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 transition-colors">Sales</p>
+                                    </div>
+                                    <div className="p-4 bg-pos-hover dark:bg-dark-hover rounded-lg border border-pos-border dark:border-dark-border text-center transition-colors">
+                                        <p className="text-2xl font-bold text-pos-text dark:text-dark-text transition-colors">156</p>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 transition-colors">Products</p>
+                                    </div>
+                                    <div className="p-4 bg-pos-hover dark:bg-dark-hover rounded-lg border border-pos-border dark:border-dark-border text-center transition-colors">
+                                        <p className="text-2xl font-bold text-pos-text dark:text-dark-text transition-colors">8</p>
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 transition-colors">Staff</p>
+                                    </div>
+                                </div>
+                                <button className="w-full py-3 bg-pos-primary dark:bg-dark-primary text-white dark:text-dark-bg rounded-lg font-medium hover:opacity-90 transition-all">
+                                    Sample Button
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Info Box */}
+                    <div className="bg-pos-hover dark:bg-dark-hover border border-pos-border dark:border-dark-border rounded-lg p-4 transition-colors">
+                        <div className="flex gap-3">
+                            <FiSettings className="w-5 h-5 text-pos-primary dark:text-dark-primary flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-sm font-medium text-pos-text dark:text-dark-text transition-colors">
+                                    Your preference is saved automatically
+                                </p>
+                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 transition-colors">
+                                    Dark mode will be remembered across all your sessions and devices where you're logged in.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
 
     // Shop Settings Component
     const ShopSettings = () => (
@@ -663,17 +757,17 @@ function Settings() {
     }
 
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-pos-bg dark:bg-dark-bg transition-colors">
             <ToastNotification />
             <Sidebar />
 
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Header */}
-                <header className="bg-white px-6 py-4 border-b border-pos-border">
+                <header className="bg-white dark:bg-dark-card px-6 py-4 border-b border-pos-border dark:border-dark-border transition-colors">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <FiSettings className="w-6 h-6 text-pos-primary" />
-                            <h1 className="text-2xl font-bold text-pos-text">Settings</h1>
+                            <FiSettings className="w-6 h-6 text-pos-primary dark:text-dark-primary transition-colors" />
+                            <h1 className="text-2xl font-bold text-pos-text dark:text-dark-text transition-colors">Settings</h1>
                         </div>
                         <ProfileDropdown />
                     </div>
@@ -682,7 +776,7 @@ function Settings() {
                 {/* Main Content */}
                 <main className="flex-1 overflow-y-auto p-6">
                     {/* Tabs */}
-                    <div className="mb-6 border-b border-gray-200">
+                    <div className="mb-6 border-b border-gray-200 dark:border-dark-border transition-colors">
                         <nav className="flex gap-1 overflow-x-auto">
                             {tabs.map((tab) => {
                                 const Icon = tab.icon
@@ -692,8 +786,8 @@ function Settings() {
                                         onClick={() => setActiveTab(tab.id)}
                                         className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium transition-colors whitespace-nowrap ${
                                             activeTab === tab.id
-                                                ? 'border-pos-primary text-pos-primary'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                                ? 'border-pos-primary dark:border-dark-primary text-pos-primary dark:text-dark-primary'
+                                                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                                         }`}
                                     >
                                         <Icon className="w-5 h-5" />
@@ -707,6 +801,7 @@ function Settings() {
                     {/* Tab Content */}
                     <div className="max-w-5xl w-full">
                         {activeTab === 'profile' && <ProfileSettings />}
+                        {activeTab === 'appearance' && <AppearanceSettings />}
                         {activeTab === 'staff' && <StaffManagement />}
                         {activeTab === 'shop' && <ShopSettings />}
                         {activeTab === 'tax' && <TaxSettings />}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useShift } from '../context/ShiftContext'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
@@ -15,7 +16,7 @@ function ShiftModal({ isOpen, onClose }) {
 
     const currency = currentShop?.currency || 'KSh'
 
-    // Reset form when modal opens/closes
+    // Reset form when modal opens/closes and pre-fill expected cash
     useEffect(() => {
         if (!isOpen) {
             setOpeningCash('')
@@ -24,8 +25,12 @@ function ShiftModal({ isOpen, onClose }) {
             setClosingNotes('')
             setShiftReport(null)
             setShowReport(false)
+        } else if (isShiftOpen && currentShift) {
+            // Pre-fill closing cash with expected cash (opening cash + cash sales)
+            const expectedCash = parseFloat(currentShift.opening_cash || 0) + parseFloat(currentShift.cash_sales || 0)
+            setClosingCash(expectedCash.toFixed(2))
         }
-    }, [isOpen])
+    }, [isOpen, isShiftOpen, currentShift])
 
     const handleOpenShift = async (e) => {
         e.preventDefault()
@@ -135,9 +140,9 @@ function ShiftModal({ isOpen, onClose }) {
 
     // Show shift report after closing
     if (showReport && shiftReport) {
-        return (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        return createPortal(
+            <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 py-8">
+                <div className="bg-white rounded-xl w-full max-w-lg max-h-[calc(100vh-4rem)] overflow-y-auto">
                     <div className="p-5 border-b border-pos-border flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-pos-text">Shift Closing Report</h2>
                         <button
@@ -310,13 +315,14 @@ function ShiftModal({ isOpen, onClose }) {
                         </button>
                     </div>
                 </div>
-            </div>
+            </div>,
+            document.body
         )
     }
 
     // Open shift form
     if (!isShiftOpen) {
-        return (
+        return createPortal(
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                 <div className="bg-white rounded-xl w-full max-w-md">
                     <div className="p-5 border-b border-pos-border flex items-center justify-between">
@@ -388,12 +394,13 @@ function ShiftModal({ isOpen, onClose }) {
                         </div>
                     </form>
                 </div>
-            </div>
+            </div>,
+            document.body
         )
     }
 
     // Close shift form
-    return (
+    return createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl w-full max-w-md">
                 <div className="p-5 border-b border-pos-border flex items-center justify-between">
@@ -485,7 +492,8 @@ function ShiftModal({ isOpen, onClose }) {
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }
 

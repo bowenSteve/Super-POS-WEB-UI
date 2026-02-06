@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar"
 import ToastNotification, { toast } from '../components/ToastNotification'
 import SuccessAnimation from '../components/SuccessAnimation'
 import KeyboardShortcutsHelp from '../components/KeyboardShortcutsHelp'
+import ReceiptPreview from '../components/ReceiptPreview'
 import useSoundEffects from '../hooks/useSoundEffects'
 
 // Default tax settings
@@ -48,6 +49,9 @@ function Sales() {
     const [customerSearch, setCustomerSearch] = useState("")
     const [customerResults, setCustomerResults] = useState([])
     const [searchingCustomers, setSearchingCustomers] = useState(false)
+    const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false)
+    const [newCustomerData, setNewCustomerData] = useState({ name: "", phone: "", email: "" })
+    const [creatingCustomer, setCreatingCustomer] = useState(false)
     const [showSplitPayment, setShowSplitPayment] = useState(false)
     const [splitPayments, setSplitPayments] = useState([])
     const [currentPayment, setCurrentPayment] = useState({ method: "cash", amount: "", reference: "" })
@@ -60,7 +64,9 @@ function Sales() {
         const saved = localStorage.getItem('pos_favorites')
         return saved ? JSON.parse(saved) : []
     })
+    const [topSellingProducts, setTopSellingProducts] = useState([])
     const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
+    const [showReceiptPreview, setShowReceiptPreview] = useState(false)
     const searchInputRef = useRef(null)
     const amountInputRef = useRef(null)
     const mpesaInputRef = useRef(null)
@@ -126,6 +132,22 @@ function Sales() {
             localStorage.setItem('pos_taxSettings', JSON.stringify(shopTaxSettings))
             localStorage.setItem('pos_taxRate', shopTaxSettings.rate.toString())
             localStorage.setItem('pos_taxEnabled', JSON.stringify(shopTaxSettings.enabled))
+        }
+    }, [currentShop])
+
+    // Fetch top-selling products on mount
+    useEffect(() => {
+        const fetchTopSellingProducts = async () => {
+            try {
+                const response = await productsAPI.get('/top-selling/')
+                setTopSellingProducts(response.data.slice(0, 5)) // Top 5 only
+            } catch (err) {
+                console.error('Failed to fetch top-selling products:', err)
+            }
+        }
+
+        if (currentShop) {
+            fetchTopSellingProducts()
         }
     }, [currentShop])
 
@@ -327,6 +349,15 @@ function Sales() {
             return
         }
 
+        // Check if adding this item will result in low stock
+        const remainingStock = product.stock_quantity - (currentQty + quantityToAdd)
+        const reorderLevel = product.reorder_level || 10
+        if (remainingStock <= reorderLevel && remainingStock > 0) {
+            toast.warning(`⚠️ Low Stock Alert: Only ${remainingStock} units left for ${product.name}`)
+        } else if (remainingStock === 0) {
+            toast.warning(`⚠️ Last Unit! ${product.name} is now out of stock`)
+        }
+
         if (existingItem) {
             updateQuantity(product.id, existingItem.quantity + quantityToAdd)
         } else {
@@ -362,6 +393,7 @@ function Sales() {
                     name: product.name,
                     selling_price: product.selling_price,
                     stock_quantity: product.stock_quantity,
+                    reorder_level: product.reorder_level || 10,
                     sku: product.sku
                 }]
             }
@@ -433,7 +465,7 @@ function Sales() {
     const total = taxableAmount + taxAmount
     const change = paymentMethod === "cash" && amountPaid ? Math.max(parseFloat(amountPaid) - total, 0) : 0
 
-    const handleCheckout = async () => {
+    const handleCheckout = () => {
         if (cart.length === 0) {
             toast.error("Cart is empty")
             return
@@ -449,6 +481,12 @@ function Sales() {
             return
         }
 
+        // Show receipt preview instead of completing immediately
+        setShowReceiptPreview(true)
+    }
+
+    const handleConfirmSale = async () => {
+        setShowReceiptPreview(false)
         setProcessing(true)
 
         try {
@@ -782,6 +820,42 @@ function Sales() {
         toast.success("Customer cleared")
     }
 
+    // Quick add new customer
+    const handleQuickAddCustomer = async (e) => {
+        e.preventDefault()
+
+        // Validate required field
+        if (!newCustomerData.name.trim()) {
+            toast.error("Customer name is required")
+            return
+        }
+
+        setCreatingCustomer(true)
+        try {
+            const response = await customersAPI.post('/', newCustomerData)
+            const newCustomer = response.data
+
+            // Select the newly created customer
+            setSelectedCustomer(newCustomer)
+
+            // Reset form and close
+            setNewCustomerData({ name: "", phone: "", email: "" })
+            setShowQuickAddCustomer(false)
+            setShowCustomerModal(false)
+            setCustomerSearch("")
+            setCustomerResults([])
+
+            playSuccess()
+            toast.success(`Customer ${newCustomer.name} created and selected!`)
+        } catch (err) {
+            console.error('Failed to create customer:', err)
+            playError()
+            toast.error(err.response?.data?.detail || "Failed to create customer")
+        } finally {
+            setCreatingCustomer(false)
+        }
+    }
+
     // SVG Icons
     const SearchIcon = () => (
         <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -903,6 +977,26 @@ function Sales() {
                 currency={currency}
             />
 
+            {/* Receipt Preview */}
+            <ReceiptPreview
+                show={showReceiptPreview}
+                onClose={() => setShowReceiptPreview(false)}
+                onConfirm={handleConfirmSale}
+                cart={cart}
+                subtotal={subtotal}
+                taxAmount={taxAmount}
+                discountAmount={discountAmount}
+                total={total}
+                paymentMethod={paymentMethod}
+                amountPaid={amountPaid}
+                change={change}
+                customer={selectedCustomer}
+                cashier={user}
+                shop={currentShop}
+                currency={currency}
+                taxSettings={taxSettings}
+            />
+
             <div className="flex-1 flex flex-col">
                 {/* Header */}
                 <header className="bg-white px-6 py-4 border-b border-pos-border">
@@ -984,6 +1078,65 @@ function Sales() {
                             ))}
                         </div>
 
+                        {/* Top Selling Products Bar */}
+                        {topSellingProducts.length > 0 && (
+                            <div className="mb-4 bg-gradient-to-r from-green-50 to-blue-50 p-3 rounded-xl border border-green-200">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <svg className="w-5 h-5 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                                    </svg>
+                                    <h3 className="text-sm font-semibold text-green-700">
+                                        Best Sellers
+                                    </h3>
+                                    <span className="ml-auto px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">
+                                        Top {topSellingProducts.length}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {topSellingProducts.map((product, index) => (
+                                        <button
+                                            key={product.id}
+                                            onClick={() => addToCart(product)}
+                                            className="relative bg-white border-2 border-green-200 rounded-lg p-3 hover:border-green-400 hover:shadow-md transition-all group"
+                                            title={`${product.name} - Sold ${product.sales_metrics?.total_quantity || 0} units`}
+                                        >
+                                            {/* Rank Badge */}
+                                            <div className="absolute -top-2 -left-2 w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
+                                                {index + 1}
+                                            </div>
+
+                                            {/* Product Info */}
+                                            <div className="text-center">
+                                                <p className="text-xs font-semibold text-pos-text truncate mb-1">
+                                                    {product.name}
+                                                </p>
+                                                <p className="text-sm font-bold text-green-600">
+                                                    {currency} {product.selling_price}
+                                                </p>
+                                                {product.sales_metrics && (
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        {product.sales_metrics.total_quantity} sold
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Low stock indicator */}
+                                            {product.stock_quantity <= (product.reorder_level || 10) && (
+                                                <div
+                                                    className="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-500 rounded-full border-2 border-white flex items-center justify-center animate-pulse"
+                                                    title={`Low stock - Only ${product.stock_quantity} left (reorder at ${product.reorder_level || 10})`}
+                                                >
+                                                    <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                                    </svg>
+                                                </div>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Quick Favorites Section */}
                         {favorites.length > 0 && (
                             <div className="mb-4">
@@ -1001,7 +1154,7 @@ function Sales() {
                                         <button
                                             key={fav.id}
                                             onClick={() => addToCart(fav)}
-                                            className="flex items-center gap-2 px-3 py-2 bg-white border border-pos-border rounded-lg hover:bg-pos-hover hover:border-pos-primary transition-colors group"
+                                            className="relative flex items-center gap-2 px-3 py-2 bg-white border border-pos-border rounded-lg hover:bg-pos-hover hover:border-pos-primary transition-colors group"
                                         >
                                             <span className="text-sm font-medium text-pos-text truncate max-w-[120px]">
                                                 {fav.name}
@@ -1009,6 +1162,9 @@ function Sales() {
                                             <span className="text-xs text-gray-500">
                                                 {currency} {fav.selling_price}
                                             </span>
+                                            {fav.stock_quantity <= (fav.reorder_level || 10) && (
+                                                <span className="text-xs text-amber-600 font-semibold" title="Low stock">⚠️</span>
+                                            )}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation()
@@ -1094,10 +1250,22 @@ function Sales() {
                                         <p className="text-xs text-gray-500 mb-2">{product.sku}</p>
                                         <div className="flex items-center justify-between">
                                             <span className="font-semibold text-pos-text">{currency} {product.selling_price}</span>
-                                            <span className={`text-xs ${product.is_low_stock ? 'text-yellow-600' : 'text-gray-500'}`}>
+                                            <span className={`text-xs ${product.stock_quantity <= (product.reorder_level || 10) ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
                                                 {product.stock_quantity} in stock
                                             </span>
                                         </div>
+
+                                        {/* Low stock indicator badge */}
+                                        {product.stock_quantity <= (product.reorder_level || 10) && (
+                                            <div
+                                                className="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-500 rounded-full border-2 border-white flex items-center justify-center"
+                                                title={`Low stock - Reorder at ${product.reorder_level || 10} units`}
+                                            >
+                                                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                                </svg>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -1562,85 +1730,189 @@ function Sales() {
 
                 {/* Customer Selection Modal */}
                 {showCustomerModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCustomerModal(false)}>
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => {
+                        setShowCustomerModal(false)
+                        setShowQuickAddCustomer(false)
+                        setNewCustomerData({ name: "", phone: "", email: "" })
+                    }}>
                         <div className="bg-white rounded-xl w-full max-w-lg m-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between p-6 border-b border-pos-border">
-                                <h3 className="text-lg font-semibold text-pos-text">Select Customer</h3>
+                                <h3 className="text-lg font-semibold text-pos-text">
+                                    {showQuickAddCustomer ? 'Add New Customer' : 'Select Customer'}
+                                </h3>
                                 <button
                                     className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
-                                    onClick={() => setShowCustomerModal(false)}
+                                    onClick={() => {
+                                        setShowCustomerModal(false)
+                                        setShowQuickAddCustomer(false)
+                                        setNewCustomerData({ name: "", phone: "", email: "" })
+                                    }}
                                 >
                                     <XIcon />
                                 </button>
                             </div>
 
-                            {/* Search Input */}
-                            <div className="p-6 border-b border-pos-border">
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                        <SearchIcon />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        className="w-full pl-10 pr-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        placeholder="Search by name, email, or phone..."
-                                        value={customerSearch}
-                                        onChange={(e) => handleCustomerSearch(e.target.value)}
-                                        autoFocus
-                                    />
-                                    {searchingCustomers && (
-                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                            <div className="w-5 h-5 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Customer Results */}
-                            <div className="flex-1 overflow-y-auto p-6">
-                                {customerSearch.length < 2 ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
-                                        <UserIcon />
-                                        <p className="mt-4 text-sm">Type to search for customers</p>
-                                    </div>
-                                ) : searchingCustomers ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
-                                        <div className="w-8 h-8 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
-                                        <p className="mt-4 text-sm">Searching...</p>
-                                    </div>
-                                ) : customerResults.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
-                                        <UserIcon />
-                                        <p className="mt-4 text-sm">No customers found</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {customerResults.map(customer => (
-                                            <div
-                                                key={customer.id}
-                                                className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
-                                                onClick={() => handleSelectCustomer(customer)}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="flex-1">
-                                                        <p className="font-medium text-pos-text">{customer.name}</p>
-                                                        {customer.email && (
-                                                            <p className="text-sm text-gray-600 mt-1">{customer.email}</p>
-                                                        )}
-                                                        {customer.phone && (
-                                                            <p className="text-sm text-gray-600 mt-1">{customer.phone}</p>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-right text-xs text-gray-500">
-                                                        <p>{customer.total_transactions} sales</p>
-                                                        <p className="mt-1">{currency} {parseFloat(customer.total_purchases || 0).toFixed(2)}</p>
-                                                    </div>
-                                                </div>
+                            {!showQuickAddCustomer ? (
+                                <>
+                                    {/* Search Input */}
+                                    <div className="p-6 border-b border-pos-border">
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                                <SearchIcon />
                                             </div>
-                                        ))}
+                                            <input
+                                                type="text"
+                                                className="w-full pl-10 pr-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                                placeholder="Search by name, email, or phone..."
+                                                value={customerSearch}
+                                                onChange={(e) => handleCustomerSearch(e.target.value)}
+                                                autoFocus
+                                            />
+                                            {searchingCustomers && (
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                    <div className="w-5 h-5 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
+
+                                    {/* Add New Customer Button */}
+                                    <div className="px-6 pt-4">
+                                        <button
+                                            onClick={() => setShowQuickAddCustomer(true)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-pos-primary to-pos-text text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                                        >
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                                                <circle cx="9" cy="7" r="4"></circle>
+                                                <line x1="20" y1="8" x2="20" y2="14"></line>
+                                                <line x1="23" y1="11" x2="17" y2="11"></line>
+                                            </svg>
+                                            Add New Customer
+                                        </button>
+                                    </div>
+
+                                    {/* Customer Results */}
+                                    <div className="flex-1 overflow-y-auto p-6">
+                                        {customerSearch.length < 2 ? (
+                                            <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                                <UserIcon />
+                                                <p className="mt-4 text-sm">Type to search for customers</p>
+                                            </div>
+                                        ) : searchingCustomers ? (
+                                            <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                                <div className="w-8 h-8 border-2 border-pos-primary border-t-transparent rounded-full animate-spin"></div>
+                                                <p className="mt-4 text-sm">Searching...</p>
+                                            </div>
+                                        ) : customerResults.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-full text-gray-400 py-12">
+                                                <UserIcon />
+                                                <p className="mt-4 text-sm">No customers found</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {customerResults.map(customer => (
+                                                    <div
+                                                        key={customer.id}
+                                                        className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                                                        onClick={() => handleSelectCustomer(customer)}
+                                                    >
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <p className="font-medium text-pos-text">{customer.name}</p>
+                                                                {customer.email && (
+                                                                    <p className="text-sm text-gray-600 mt-1">{customer.email}</p>
+                                                                )}
+                                                                {customer.phone && (
+                                                                    <p className="text-sm text-gray-600 mt-1">{customer.phone}</p>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-right text-xs text-gray-500">
+                                                                <p>{customer.total_transactions} sales</p>
+                                                                <p className="mt-1">{currency} {parseFloat(customer.total_purchases || 0).toFixed(2)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                /* Quick Add Customer Form */
+                                <div className="p-6">
+                                    <form onSubmit={handleQuickAddCustomer} className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Name <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={newCustomerData.name}
+                                                onChange={(e) => setNewCustomerData({ ...newCustomerData, name: e.target.value })}
+                                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                                placeholder="Enter customer name"
+                                                autoFocus
+                                                required
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Phone
+                                            </label>
+                                            <input
+                                                type="tel"
+                                                value={newCustomerData.phone}
+                                                onChange={(e) => setNewCustomerData({ ...newCustomerData, phone: e.target.value })}
+                                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                                placeholder="Enter phone number"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Email
+                                            </label>
+                                            <input
+                                                type="email"
+                                                value={newCustomerData.email}
+                                                onChange={(e) => setNewCustomerData({ ...newCustomerData, email: e.target.value })}
+                                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                                placeholder="Enter email address"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-3 pt-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowQuickAddCustomer(false)
+                                                    setNewCustomerData({ name: "", phone: "", email: "" })
+                                                }}
+                                                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                                                disabled={creatingCustomer}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={creatingCustomer || !newCustomerData.name.trim()}
+                                                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-pos-primary to-pos-text text-white rounded-lg hover:opacity-90 transition-opacity font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                            >
+                                                {creatingCustomer ? (
+                                                    <>
+                                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                        Creating...
+                                                    </>
+                                                ) : (
+                                                    'Save & Select'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
