@@ -73,6 +73,7 @@ function Transactions() {
 
     useEffect(() => {
         fetchTransactions()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPage, pageSize, filterPaymentMethod, filterDateFrom, filterDateTo, searchTerm])
 
     const fetchTransactions = async () => {

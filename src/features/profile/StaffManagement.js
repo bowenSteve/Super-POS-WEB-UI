@@ -27,6 +27,7 @@ const StaffManagement = () => {
     if (currentShop?.id) {
       fetchStaff()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentShop])
 
   const fetchStaff = async () => {

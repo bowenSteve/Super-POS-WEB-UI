@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuth } from "../context/AuthContext"
 import { productsAPI, salesAPI, customersAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
@@ -65,7 +65,6 @@ function Sales() {
         return saved ? JSON.parse(saved) : []
     })
     const [topSellingProducts, setTopSellingProducts] = useState([])
-    const [showShortcutsHelp, setShowShortcutsHelp] = useState(false)
     const [showReceiptPreview, setShowReceiptPreview] = useState(false)
     const searchInputRef = useRef(null)
     const amountInputRef = useRef(null)
@@ -276,13 +275,13 @@ function Sales() {
             // ? - Toggle shortcuts help
             if (e.key === '?' && !isInputFocused) {
                 e.preventDefault()
-                setShowShortcutsHelp(prev => !prev)
                 return
             }
         }
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [cart, processing, showHoldModal, showRecallModal, showCustomerModal, showSplitPayment, pendingQuantity, searchTerm])
 
     const fetchCategories = async () => {
@@ -510,7 +509,7 @@ function Sales() {
                 status: "completed"
             }
 
-            const response = await salesAPI.createTransaction(transactionData)
+            await salesAPI.createTransaction(transactionData)
 
             // Show success animation and play sound
             setSuccessAmount(total)

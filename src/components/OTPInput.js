@@ -26,7 +26,7 @@ function OTPInput({ value = '', onChange, length = 6 }) {
         if (otp.length === 0) {
             setOtp(Array(length).fill(''))
         }
-    }, [length])
+    }, [length, otp.length])
 
     // Update parent when otp changes
     useEffect(() => {
@@ -39,6 +39,7 @@ function OTPInput({ value = '', onChange, length = 6 }) {
         if (value === '' && otp.join('') !== '') {
             setOtp(Array(length).fill(''))
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, length])
 
     const handleChange = (index, e) => {

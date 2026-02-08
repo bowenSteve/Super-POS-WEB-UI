@@ -11,8 +11,8 @@ import toast from 'react-hot-toast'
 function Reports() {
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
-    const [transactions, setTransactions] = useState([])
-    const [products, setProducts] = useState([])
+    const [, setTransactions] = useState([])
+    const [, setProducts] = useState([])
     const [dateRange, setDateRange] = useState('week') // 'today', 'week', 'month', 'year', 'custom'
     const [customDateFrom, setCustomDateFrom] = useState('')
     const [customDateTo, setCustomDateTo] = useState('')
@@ -185,9 +185,6 @@ function Reports() {
             .slice(0, 10)
 
         // Compute comparison with previous period
-        const { dateFrom, dateTo } = getDateParams()
-        const currentPeriodDays = Math.ceil((new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24)) + 1
-
         // For simplicity, we'll show growth based on available data
         let comparisonPercentage = 0
         if (salesTrend.length >= 2) {
@@ -254,6 +251,7 @@ function Reports() {
 
     useEffect(() => {
         fetchData()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateRange, customDateFrom, customDateTo])
 
     // Custom tooltip for charts
