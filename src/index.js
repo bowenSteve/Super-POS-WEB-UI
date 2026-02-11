@@ -1,4 +1,3 @@
-import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import reportWebVitals from './reportWebVitals';
@@ -6,19 +5,16 @@ import routes from './routes';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ShiftProvider } from './context/ShiftContext';
-import { ThemeProvider } from './context/ThemeContext';
 
 
 const router = createBrowserRouter(routes)
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <ThemeProvider>
-    <AuthProvider>
-      <ShiftProvider>
-        <RouterProvider router={router} />
-      </ShiftProvider>
-    </AuthProvider>
-  </ThemeProvider>
+  <AuthProvider>
+    <ShiftProvider>
+      <RouterProvider router={router} />
+    </ShiftProvider>
+  </AuthProvider>
 );
 
 // If you want to start measuring performance in your app, pass a function
