@@ -31,7 +31,7 @@ const defaultReceiptSettings = {
 
 function Settings() {
     const { currentShop, updateCurrentShop } = useAuth()
-    const [activeTab, setActiveTab] = useState('profile')
+    const [activeTab, setActiveTab] = useState('shop')
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(true)
 
@@ -52,9 +52,9 @@ function Settings() {
     const [receiptSettings, setReceiptSettings] = useState(defaultReceiptSettings)
 
     const tabs = [
+        { id: 'shop', label: 'Shop', icon: FiShoppingBag },
         { id: 'profile', label: 'Profile', icon: FiUser },
         { id: 'staff', label: 'Staff', icon: FiUsers },
-        { id: 'shop', label: 'Shop', icon: FiShoppingBag },
         { id: 'tax', label: 'Tax', icon: FiPercent },
         { id: 'receipt', label: 'Receipt', icon: FiFileText },
     ]

@@ -16,6 +16,7 @@ function Home() {
     const [error, setError] = useState("")
     const [dateFrom, setDateFrom] = useState(new Date())
     const [dateTo, setDateTo] = useState(new Date())
+    const [showNotifications, setShowNotifications] = useState(false)
     const dateFromRef = useRef(null)
     const dateToRef = useRef(null)
 
@@ -269,10 +270,61 @@ function Home() {
                             />
                         </div>
                         <div className="flex items-center gap-4">
-                            <button className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors relative">
-                                <BellIcon />
-                                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                            </button>
+                            {/* Notifications Dropdown */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowNotifications(!showNotifications)}
+                                    className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors relative"
+                                >
+                                    <BellIcon />
+                                    {lowStockCount > 0 && (
+                                        <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                                    )}
+                                </button>
+
+                                {/* Notifications Dropdown Menu */}
+                                {showNotifications && (
+                                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-pos-border z-50">
+                                        <div className="p-4 border-b border-pos-border">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="font-semibold text-pos-text">Notifications</h3>
+                                                <button
+                                                    onClick={() => setShowNotifications(false)}
+                                                    className="text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="max-h-96 overflow-y-auto">
+                                            {lowStockCount > 0 ? (
+                                                <div className="p-4">
+                                                    <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
+                                                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                                            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <p className="text-sm font-medium text-red-900">Low Stock Alert</p>
+                                                            <p className="text-xs text-red-700 mt-1">{lowStockCount} items need restocking</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="p-8 text-center">
+                                                    <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-3">
+                                                        <BellIcon />
+                                                    </div>
+                                                    <p className="text-sm text-gray-500">No new notifications</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                             {/* Date Range Picker */}
                             <div className="flex items-center gap-2 bg-pos-bg px-3 py-1.5 rounded-lg">
                                 <CalendarIcon />

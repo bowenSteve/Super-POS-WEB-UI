@@ -542,26 +542,29 @@ function Sales() {
 
     // Split payment functions
     const handleAddPayment = () => {
-        const paymentAmount = parseFloat(currentPayment.amount)
+        let paymentAmount = parseFloat(currentPayment.amount)
 
         if (!paymentAmount || paymentAmount <= 0) {
             toast.error("Please enter a valid amount")
             return
         }
 
-        if (currentPayment.method === "mpesa" && !currentPayment.reference.trim()) {
-            toast.error("M-Pesa reference is required")
-            return
+        // Round up M-Pesa payments to nearest whole number (no decimals for M-Pesa)
+        if (currentPayment.method === "mpesa") {
+            paymentAmount = Math.ceil(paymentAmount)
+
+            if (!currentPayment.reference.trim()) {
+                toast.error("M-Pesa reference is required")
+                return
+            }
         }
 
         const totalPaid = splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0)
         const remaining = parseFloat((total - totalPaid).toFixed(2))
 
-        // Use a small tolerance for floating-point comparison (0.01 = 1 cent)
-        if (paymentAmount > remaining + 0.01) {
-            toast.error(`Amount exceeds remaining balance of ${currency} ${remaining.toFixed(2)}`)
-            return
-        }
+        // For M-Pesa, allow overpayment due to rounding (it will become change)
+        // For cash, allow overpayment as well (it will become change)
+        // No strict check here since change is properly handled in completion
 
         setSplitPayments([...splitPayments, {
             method: currentPayment.method,
@@ -831,7 +834,18 @@ function Sales() {
 
         setCreatingCustomer(true)
         try {
-            const response = await customersAPI.post('/', newCustomerData)
+            // Clean data - remove empty strings to avoid unique constraint issues
+            const customerData = {
+                name: newCustomerData.name.trim(),
+                phone: newCustomerData.phone.trim() || undefined,
+                email: newCustomerData.email.trim() || undefined
+            }
+            // Remove undefined fields
+            Object.keys(customerData).forEach(key =>
+                customerData[key] === undefined && delete customerData[key]
+            )
+
+            const response = await customersAPI.create(customerData)
             const newCustomer = response.data
 
             // Select the newly created customer

@@ -113,7 +113,7 @@ function Reports() {
         const completedTx = txData.filter(tx => tx.status === 'completed')
 
         // Total sales
-        const totalSales = completedTx.reduce((sum, tx) => sum + parseFloat(tx.total_amount || 0), 0)
+        const totalSales = completedTx.reduce((sum, tx) => sum + parseFloat(tx.total || 0), 0)
 
         // Total transactions
         const totalTransactions = completedTx.length
@@ -134,7 +134,7 @@ function Reports() {
             if (!salesByDate[date]) {
                 salesByDate[date] = { date, sales: 0, transactions: 0 }
             }
-            salesByDate[date].sales += parseFloat(tx.total_amount || 0)
+            salesByDate[date].sales += parseFloat(tx.total || 0)
             salesByDate[date].transactions += 1
         })
 
@@ -155,7 +155,7 @@ function Reports() {
                 paymentCounts[displayMethod] = { name: displayMethod, value: 0, amount: 0 }
             }
             paymentCounts[displayMethod].value += 1
-            paymentCounts[displayMethod].amount += parseFloat(tx.total_amount || 0)
+            paymentCounts[displayMethod].amount += parseFloat(tx.total || 0)
         })
 
         const paymentBreakdown = Object.values(paymentCounts)
@@ -462,30 +462,51 @@ function Reports() {
                         <div className="bg-pos-bg-secondary border border-pos-border rounded-xl p-5">
                             <h2 className="text-lg font-semibold text-pos-text-primary mb-4">Payment Methods</h2>
                             {analytics.paymentBreakdown.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <PieChart>
-                                        <Pie
-                                            data={analytics.paymentBreakdown}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={60}
-                                            outerRadius={100}
-                                            paddingAngle={5}
-                                            dataKey="value"
-                                        >
-                                            {analytics.paymentBreakdown.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip
-                                            formatter={(value, name, props) => [
-                                                `${value} transactions (${formatCurrency(props.payload.amount)})`,
-                                                props.payload.name
-                                            ]}
-                                        />
-                                        <Legend />
-                                    </PieChart>
-                                </ResponsiveContainer>
+                                <>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <PieChart>
+                                            <Pie
+                                                data={analytics.paymentBreakdown}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={100}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                            >
+                                                {analytics.paymentBreakdown.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                formatter={(value, name, props) => [
+                                                    `${value} transactions (${formatCurrency(props.payload.amount)})`,
+                                                    props.payload.name
+                                                ]}
+                                            />
+                                            <Legend />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+
+                                    {/* Payment Breakdown Summary */}
+                                    <div className="mt-4 space-y-2">
+                                        {analytics.paymentBreakdown.map((payment, index) => (
+                                            <div key={payment.name} className="flex items-center justify-between p-3 bg-pos-bg-tertiary rounded-lg">
+                                                <div className="flex items-center gap-3">
+                                                    <div
+                                                        className="w-3 h-3 rounded-full"
+                                                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                                                    />
+                                                    <div>
+                                                        <p className="font-medium text-pos-text-primary">{payment.name}</p>
+                                                        <p className="text-sm text-pos-text-secondary">{payment.value} transactions</p>
+                                                    </div>
+                                                </div>
+                                                <p className="font-bold text-pos-text-primary">{formatCurrency(payment.amount)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             ) : (
                                 <div className="h-[300px] flex items-center justify-center text-pos-text-secondary">
                                     No payment data for this period

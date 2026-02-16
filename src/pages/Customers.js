@@ -66,7 +66,20 @@ function Customers() {
         e.preventDefault()
 
         try {
-            await customersAPI.create(formData)
+            // Clean data - remove empty strings to avoid unique constraint issues
+            const customerData = {
+                name: formData.name.trim(),
+                email: formData.email.trim() || undefined,
+                phone: formData.phone.trim() || undefined,
+                address: formData.address.trim() || undefined,
+                is_active: formData.is_active
+            }
+            // Remove undefined fields
+            Object.keys(customerData).forEach(key =>
+                customerData[key] === undefined && delete customerData[key]
+            )
+
+            await customersAPI.create(customerData)
             toast.success("Customer added successfully!")
             setShowAddModal(false)
             setFormData({
@@ -87,7 +100,20 @@ function Customers() {
         e.preventDefault()
 
         try {
-            await customersAPI.update(selectedCustomer.id, formData)
+            // Clean data - remove empty strings to avoid unique constraint issues
+            const customerData = {
+                name: formData.name.trim(),
+                email: formData.email.trim() || undefined,
+                phone: formData.phone.trim() || undefined,
+                address: formData.address.trim() || undefined,
+                is_active: formData.is_active
+            }
+            // Remove undefined fields
+            Object.keys(customerData).forEach(key =>
+                customerData[key] === undefined && delete customerData[key]
+            )
+
+            await customersAPI.update(selectedCustomer.id, customerData)
             toast.success("Customer updated successfully!")
             setShowEditModal(false)
             setSelectedCustomer(null)
