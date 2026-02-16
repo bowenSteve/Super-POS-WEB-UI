@@ -9,10 +9,12 @@ import {
 import toast from 'react-hot-toast'
 
 function Reports() {
+    const [activeView, setActiveView] = useState('analytics') // 'analytics' or 'shifts'
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
     const [, setTransactions] = useState([])
     const [, setProducts] = useState([])
+    const [shifts, setShifts] = useState([])
     const [dateRange, setDateRange] = useState('week') // 'today', 'week', 'month', 'year', 'custom'
     const [customDateFrom, setCustomDateFrom] = useState('')
     const [customDateTo, setCustomDateTo] = useState('')
@@ -68,6 +70,21 @@ function Reports() {
         }
 
         return { dateFrom, dateTo }
+    }
+
+    // Fetch shifts data
+    const fetchShifts = async () => {
+        try {
+            setLoading(true)
+            const response = await salesAPI.getShifts({ page_size: 100, ordering: '-started_at' })
+            const shiftsData = response.data.results || response.data || []
+            setShifts(Array.isArray(shiftsData) ? shiftsData : [])
+        } catch (error) {
+            console.error('Error fetching shifts:', error)
+            toast.error('Failed to load shifts')
+        } finally {
+            setLoading(false)
+        }
     }
 
     // Fetch data
@@ -226,6 +243,24 @@ function Reports() {
         return new Intl.NumberFormat('en-US').format(num)
     }
 
+    // Download shift PDF
+    const handleDownloadShiftPDF = async (shiftId) => {
+        try {
+            const response = await salesAPI.exportShiftPDF(shiftId)
+            const url = window.URL.createObjectURL(new Blob([response.data]))
+            const link = document.createElement('a')
+            link.href = url
+            link.setAttribute('download', `shift_report_${shiftId}.pdf`)
+            document.body.appendChild(link)
+            link.click()
+            link.remove()
+            toast.success('PDF downloaded')
+        } catch (error) {
+            console.error('Error downloading shift PDF:', error)
+            toast.error('Failed to download PDF')
+        }
+    }
+
     // Export report as PDF
     const handleExportPDF = async () => {
         try {
@@ -250,9 +285,13 @@ function Reports() {
     }
 
     useEffect(() => {
-        fetchData()
+        if (activeView === 'analytics') {
+            fetchData()
+        } else if (activeView === 'shifts') {
+            fetchShifts()
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dateRange, customDateFrom, customDateTo])
+    }, [dateRange, customDateFrom, customDateTo, activeView])
 
     // Custom tooltip for charts
     const CustomTooltip = ({ active, payload, label }) => {
@@ -357,6 +396,35 @@ function Reports() {
                         </div>
                     </div>
 
+                    {/* Tabs Navigation */}
+                    <div className="mb-6 border-b border-pos-border">
+                        <nav className="flex gap-1">
+                            <button
+                                onClick={() => setActiveView('analytics')}
+                                className={`px-4 py-3 border-b-2 font-medium transition-colors ${
+                                    activeView === 'analytics'
+                                        ? 'border-pos-text text-pos-text'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                Analytics
+                            </button>
+                            <button
+                                onClick={() => setActiveView('shifts')}
+                                className={`px-4 py-3 border-b-2 font-medium transition-colors ${
+                                    activeView === 'shifts'
+                                        ? 'border-pos-text text-pos-text'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                Shift History
+                            </button>
+                        </nav>
+                    </div>
+
+                    {/* Analytics View */}
+                    {activeView === 'analytics' && (
+                    <>
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         <div className="bg-pos-bg-secondary border border-pos-border rounded-xl p-5">
@@ -635,6 +703,95 @@ function Reports() {
                             </div>
                         </div>
                     </div>
+                    </>
+                    )}
+
+                    {/* Shifts View */}
+                    {activeView === 'shifts' && (
+                        <div className="bg-white rounded-xl border border-pos-border overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead className="bg-gray-50 border-b border-pos-border">
+                                        <tr>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Shift ID</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Cashier</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Started</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ended</th>
+                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Duration</th>
+                                            <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total Sales</th>
+                                            <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Transactions</th>
+                                            <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Status</th>
+                                            <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-pos-border">
+                                        {shifts.length > 0 ? (
+                                            shifts.map((shift) => (
+                                                <tr key={shift.id} className="hover:bg-gray-50">
+                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">{shift.shift_id}</td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">{shift.cashier_name}</td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                                        {new Date(shift.started_at).toLocaleString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                                        {shift.ended_at
+                                                            ? new Date(shift.ended_at).toLocaleString('en-US', {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                year: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            })
+                                                            : '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                                        {shift.duration_formatted || '-'}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-right font-medium text-pos-text">
+                                                        {formatCurrency(shift.total_sales)}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-right text-gray-600">
+                                                        {shift.total_transactions}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                                            shift.status === 'closed'
+                                                                ? 'bg-gray-100 text-gray-800'
+                                                                : 'bg-green-100 text-green-800'
+                                                        }`}>
+                                                            {shift.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button
+                                                            onClick={() => handleDownloadShiftPDF(shift.id)}
+                                                            className="inline-flex items-center gap-1 px-3 py-1 text-sm border border-pos-border rounded-lg hover:bg-gray-50 transition-colors"
+                                                            title="Download PDF"
+                                                        >
+                                                            <FiDownload size={14} />
+                                                            PDF
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
+                                                    No shifts found
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

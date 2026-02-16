@@ -559,9 +559,6 @@ function Sales() {
             }
         }
 
-        const totalPaid = splitPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0)
-        const remaining = parseFloat((total - totalPaid).toFixed(2))
-
         // For M-Pesa, allow overpayment due to rounding (it will become change)
         // For cash, allow overpayment as well (it will become change)
         // No strict check here since change is properly handled in completion
