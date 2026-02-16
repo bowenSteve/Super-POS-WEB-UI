@@ -572,11 +572,6 @@ function Settings() {
                             <div className={`font-mono ${receiptSettings.fontSize === 'small' ? 'text-xs' : receiptSettings.fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
                                 {/* Header */}
                                 <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
-                                    {receiptSettings.showLogo && (
-                                        <div className="w-12 h-12 bg-gray-200 rounded mx-auto mb-2 flex items-center justify-center text-gray-400">
-                                            Logo
-                                        </div>
-                                    )}
                                     <p className="font-bold">{shopSettings.name || 'Shop Name'}</p>
                                     {shopSettings.address && <p className="text-gray-600 text-xs">{shopSettings.address}</p>}
                                     {shopSettings.phone && <p className="text-gray-600 text-xs">Tel: {shopSettings.phone}</p>}

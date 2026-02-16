@@ -126,7 +126,20 @@ function Inventory() {
     const handleRestock = async (e) => {
         e.preventDefault()
 
-        const newStock = parseInt(selectedProduct.stock_quantity) + parseInt(restockAmount)
+        if (!selectedProduct || !restockAmount) {
+            toast.error("Invalid restock data")
+            return
+        }
+
+        const currentStock = parseInt(selectedProduct.stock_quantity) || 0
+        const additionalStock = parseInt(restockAmount) || 0
+
+        if (isNaN(currentStock) || isNaN(additionalStock) || additionalStock <= 0) {
+            toast.error("Invalid stock quantity")
+            return
+        }
+
+        const newStock = currentStock + additionalStock
 
         try {
             await productsAPI.update(selectedProduct.id, {
@@ -553,8 +566,8 @@ function Inventory() {
                                         </h3>
                                         <div className="bg-green-50 rounded-lg p-4 max-h-48 overflow-y-auto">
                                             <div className="space-y-2">
-                                                {importResults.success.map((item, index) => (
-                                                    <div key={index} className="text-sm text-green-800">
+                                                {importResults.success.map((item) => (
+                                                    <div key={`success-${item.row}-${item.sku}`} className="text-sm text-green-800">
                                                         Row {item.row}: {item.name} (SKU: {item.sku})
                                                     </div>
                                                 ))}
@@ -572,8 +585,8 @@ function Inventory() {
                                         </h3>
                                         <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
                                             <div className="space-y-3">
-                                                {importResults.errors.map((item, index) => (
-                                                    <div key={index} className="bg-white rounded-lg p-3 border border-gray-200">
+                                                {importResults.errors.map((item) => (
+                                                    <div key={`error-${item.row}`} className="bg-white rounded-lg p-3 border border-gray-200">
                                                         <p className="text-sm font-medium text-gray-900 mb-1">
                                                             Row {item.row}
                                                         </p>

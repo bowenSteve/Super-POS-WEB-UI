@@ -111,7 +111,7 @@ function Transactions() {
         setCurrentPage(1)
     }
 
-    const totalSales = transactions.reduce((sum, t) => sum + parseFloat(t.total), 0)
+    const totalSales = transactions.reduce((sum, t) => sum + (parseFloat(t.total) || 0), 0)
     const totalTransactions = totalCount
 
     const viewDetails = async (transactionId) => {
@@ -1123,11 +1123,6 @@ function Transactions() {
                             <div id="receipt-content" className={`p-4 font-mono ${receiptSettings.fontSize === 'small' ? 'text-xs' : receiptSettings.fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
                                 {/* Header */}
                                 <div className="text-center mb-4">
-                                    {receiptSettings.showLogo && (
-                                        <div className="w-10 h-10 bg-gray-200 rounded mx-auto mb-2 flex items-center justify-center text-gray-400 text-xs">
-                                            Logo
-                                        </div>
-                                    )}
                                     <p className="shop-name text-lg font-bold">{shopName.toUpperCase()}</p>
                                     {shopAddress && <p className="text-xs text-gray-500">{shopAddress}</p>}
                                     {shopPhone && <p className="text-xs text-gray-500">Tel: {shopPhone}</p>}

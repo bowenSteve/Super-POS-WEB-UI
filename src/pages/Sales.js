@@ -69,6 +69,10 @@ function Sales() {
     const searchInputRef = useRef(null)
     const amountInputRef = useRef(null)
     const mpesaInputRef = useRef(null)
+    const amountClickTimerRef = useRef(null)
+
+    // Quick amount button clicks tracking
+    const [amountButtonClicks, setAmountButtonClicks] = useState({})
 
     // Sound effects
     const { playAddItem, playSuccess, playError, playRemoveItem, playHold } = useSoundEffects()
@@ -406,6 +410,8 @@ function Sales() {
     const updateQuantity = (productId, newQuantity) => {
         const product = cart.find(item => item.product.id === productId)?.product
 
+        if (!product) return
+
         if (newQuantity > product.stock_quantity) {
             toast.error(`Only ${product.stock_quantity} units available for ${product.name}`)
             return
@@ -538,6 +544,30 @@ function Sales() {
     const handleSuccessComplete = () => {
         setShowSuccess(false)
         setSuccessAmount(0)
+    }
+
+    // Handle quick amount button clicks (multiply on consecutive clicks)
+    const handleQuickAmount = (baseAmount) => {
+        // Clear any existing timer
+        if (amountClickTimerRef.current) {
+            clearTimeout(amountClickTimerRef.current)
+        }
+
+        // Get current click count for this amount
+        const currentClicks = amountButtonClicks[baseAmount] || 0
+        const newClicks = currentClicks + 1
+
+        // Update click count
+        setAmountButtonClicks({ ...amountButtonClicks, [baseAmount]: newClicks })
+
+        // Calculate multiplied amount
+        const multipliedAmount = baseAmount * newClicks
+        setAmountPaid(multipliedAmount.toString())
+
+        // Reset click count after 1 second of no clicks
+        amountClickTimerRef.current = setTimeout(() => {
+            setAmountButtonClicks({})
+        }, 1000)
     }
 
     // Split payment functions
@@ -1384,7 +1414,26 @@ function Sales() {
                                                             >
                                                                 <MinusIcon />
                                                             </button>
-                                                            <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                                                            <input
+                                                                type="number"
+                                                                value={item.quantity}
+                                                                onChange={(e) => {
+                                                                    const value = e.target.value
+                                                                    // Only allow positive whole numbers
+                                                                    if (value === '' || (Number.isInteger(Number(value)) && Number(value) >= 1)) {
+                                                                        updateQuantity(item.product.id, value === '' ? 1 : parseInt(value))
+                                                                    }
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    // Prevent decimal point and negative sign
+                                                                    if (e.key === '.' || e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                        e.preventDefault()
+                                                                    }
+                                                                }}
+                                                                className="w-12 text-center text-sm font-medium bg-transparent focus:outline-none focus:ring-1 focus:ring-pos-primary rounded"
+                                                                min="1"
+                                                                step="1"
+                                                            />
                                                             <button
                                                                 className="p-2 text-gray-500 hover:text-pos-text transition-colors"
                                                                 onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
@@ -1524,9 +1573,12 @@ function Sales() {
                                                     <button
                                                         key={amount}
                                                         className="px-3 py-1.5 text-sm bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-                                                        onClick={() => setAmountPaid(amount.toString())}
+                                                        onClick={() => handleQuickAmount(amount)}
                                                     >
                                                         {amount}
+                                                        {amountButtonClicks[amount] > 1 && (
+                                                            <span className="ml-1 text-xs">×{amountButtonClicks[amount]}</span>
+                                                        )}
                                                     </button>
                                                 ))}
                                                 <button

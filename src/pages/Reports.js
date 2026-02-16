@@ -12,8 +12,6 @@ function Reports() {
     const [activeView, setActiveView] = useState('analytics') // 'analytics' or 'shifts'
     const [loading, setLoading] = useState(true)
     const [refreshing, setRefreshing] = useState(false)
-    const [, setTransactions] = useState([])
-    const [, setProducts] = useState([])
     const [shifts, setShifts] = useState([])
     const [dateRange, setDateRange] = useState('week') // 'today', 'week', 'month', 'year', 'custom'
     const [customDateFrom, setCustomDateFrom] = useState('')
@@ -107,9 +105,6 @@ function Reports() {
 
             const txData = transactionsRes.data.results || transactionsRes.data || []
             const prodData = productsRes.data.results || productsRes.data || []
-
-            setTransactions(txData)
-            setProducts(prodData)
 
             // Compute analytics from transactions
             computeAnalytics(txData, prodData)
