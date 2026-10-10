@@ -115,6 +115,7 @@ export const productsAPI = {
   delete: (id) => api.delete(`/products/${id}/`),
   getCategories: () => api.get('/products/categories/'),
   createCategory: (data) => api.post('/products/categories/', data),
+  deleteCategory: (id) => api.delete(`/products/categories/${id}/`),
   importProducts: (file) => {
     const formData = new FormData();
     formData.append('file', file);

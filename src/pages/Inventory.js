@@ -283,11 +283,27 @@ function Inventory() {
         try {
             await productsAPI.createCategory(categoryFormData)
             toast.success("Category created successfully!")
-            setShowCategoryModal(false)
             setCategoryFormData({ name: "", description: "" })
             fetchCategories()
         } catch (err) {
             const errorMsg = err.response?.data?.name?.[0] || err.response?.data?.detail || "Failed to create category"
+            toast.error(errorMsg)
+        }
+    }
+
+    const handleDeleteCategory = async (category) => {
+        if (!window.confirm(`Delete "${category.name}"? Products in this category will become uncategorized, not deleted.`)) return
+
+        try {
+            await productsAPI.deleteCategory(category.id)
+            toast.success("Category deleted successfully!")
+            if (selectedCategory === String(category.id)) {
+                setSelectedCategory("")
+                setPage(1)
+            }
+            fetchCategories()
+        } catch (err) {
+            const errorMsg = err.response?.data?.detail || "Failed to delete category"
             toast.error(errorMsg)
         }
     }
@@ -325,6 +341,13 @@ function Inventory() {
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+        </svg>
+    )
+
+    const TrashIcon = () => (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
         </svg>
     )
 
@@ -871,18 +894,39 @@ function Inventory() {
                     </div>
                 )}
 
-                {/* Add Category Modal */}
+                {/* Manage Categories Modal */}
                 {showCategoryModal && (
                     <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowCategoryModal(false)}>
-                        <div className="bg-white rounded-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                        <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
-                                <h2 className="text-lg font-semibold">Add new category</h2>
+                                <h2 className="text-lg font-semibold">Manage categories</h2>
                                 <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowCategoryModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleCreateCategory} className="p-6 grid gap-4">
+                            {categories.length > 0 && (
+                                <div className="px-6 pt-5 grid gap-1.5">
+                                    {categories.map((cat) => (
+                                        <div key={cat.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5 bg-brand-surface rounded-xl">
+                                            <span className="text-sm font-medium truncate">{cat.name}</span>
+                                            <button
+                                                onClick={() => handleDeleteCategory(cat)}
+                                                className="p-1.5 text-brand-ink/50 hover:text-[#c8553d] hover:bg-[#c8553d]/10 rounded-lg transition-colors cursor-pointer flex-none"
+                                                title={`Delete ${cat.name}`}
+                                            >
+                                                <TrashIcon />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="px-6 pt-5 pb-1">
+                                <h3 className="text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Add new category</h3>
+                            </div>
+
+                            <form onSubmit={handleCreateCategory} className="p-6 pt-3 grid gap-4">
                                 <div>
                                     <label className={labelClass}>Category name *</label>
                                     <input
@@ -911,7 +955,7 @@ function Inventory() {
 
                                 <div className="flex justify-end gap-3 pt-2">
                                     <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowCategoryModal(false)}>
-                                        Cancel
+                                        Close
                                     </button>
                                     <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
                                         Create category
