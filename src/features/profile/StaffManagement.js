@@ -3,6 +3,9 @@ import { useAuth } from '../../context/AuthContext'
 import { shopsAPI } from '../../api/api'
 import { FiUsers, FiPlus, FiTrash2, FiMail, FiShield, FiX, FiEdit2 } from 'react-icons/fi'
 
+const inputClass = 'w-full px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl outline-none focus:border-brand-ink transition-colors'
+const labelClass = 'block text-sm font-semibold mb-1.5'
+
 const StaffManagement = () => {
   const { currentShop } = useAuth()
   const [staff, setStaff] = useState([])
@@ -11,6 +14,7 @@ const StaffManagement = () => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
   const [formData, setFormData] = useState({
+    name: '',
     email: '',
     role: 'cashier'
   })
@@ -60,7 +64,7 @@ const StaffManagement = () => {
     try {
       await shopsAPI.inviteStaff(currentShop.id, formData)
       setSuccess('Staff member invited successfully!')
-      setFormData({ email: '', role: 'cashier' })
+      setFormData({ name: '', email: '', role: 'cashier' })
       setShowAddModal(false)
       fetchStaff()
       setTimeout(() => setSuccess(''), 3000)
@@ -107,218 +111,217 @@ const StaffManagement = () => {
     }
   }
 
-  const getRoleBadgeColor = (role) => {
-    const colors = {
-      owner: 'bg-purple-100 text-purple-700',
-      manager: 'bg-blue-100 text-blue-700',
-      cashier: 'bg-green-100 text-green-700',
-      inventory: 'bg-orange-100 text-orange-700'
+  const getRoleBadgeStyle = (role) => {
+    const styles = {
+      owner: { background: '#14373b', color: '#f0f8f5' },
+      manager: { background: 'rgba(237,134,116,0.18)', color: '#14373b' },
+      cashier: { background: 'rgba(47,122,95,0.12)', color: '#2f7a5f' },
+      inventory: { background: 'rgba(20,55,59,0.08)', color: '#14373b' }
     }
-    return colors[role] || 'bg-gray-100 text-gray-700'
+    return styles[role] || { background: 'rgba(20,55,59,0.08)', color: '#14373b' }
   }
 
   if (!currentShop) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 text-center">
-        <FiUsers className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-        <p className="text-gray-500">Please select a shop to manage staff</p>
+      <div className="bg-white p-10 text-center font-sans text-brand-ink">
+        <FiUsers className="w-12 h-12 text-brand-ink/30 mx-auto mb-3" />
+        <p className="text-brand-ink/55">Please select a shop to manage staff</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="font-sans text-brand-ink">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center justify-between">
+      <div className="px-6 py-5 border-b border-brand-ink/[0.08]">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <FiUsers className="w-6 h-6 text-pos-primary" />
+            <FiUsers className="w-5 h-5 text-brand-ink/60" />
             <div>
-              <h2 className="text-xl font-semibold text-pos-text">Staff Management</h2>
-              <p className="text-sm text-gray-500">{currentShop.name}</p>
+              <h2 className="text-base font-semibold">Staff management</h2>
+              <p className="text-sm text-brand-ink/55">{currentShop.name}</p>
             </div>
           </div>
           {(currentShop.role === 'owner' || currentShop.role === 'manager') && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
             >
               <FiPlus className="w-4 h-4" />
-              Add Staff
+              Add staff
             </button>
           )}
         </div>
 
         {success && (
-          <div className="mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+          <div className="mt-4 p-3 bg-[#2f7a5f]/10 border border-[#2f7a5f]/20 text-[#2f7a5f] rounded-xl text-sm">
             {success}
           </div>
         )}
 
         {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+          <div className="mt-4 p-3 bg-[#c8553d]/10 border border-[#c8553d]/20 text-[#c8553d] rounded-xl text-sm">
             {error}
           </div>
         )}
       </div>
 
       {/* Staff List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">
-            Loading staff members...
-          </div>
-        ) : staff.length === 0 ? (
-          <div className="p-8 text-center">
-            <FiUsers className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-            <p className="text-gray-500">No staff members yet</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Joined
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {staff.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 rounded-full bg-pos-primary text-white flex items-center justify-center font-medium">
-                          {getInitials(member.user?.username)}
-                        </div>
-                        <div className="ml-3">
-                          <p className="text-sm font-medium text-pos-text">
-                            {member.user?.username || 'Unknown'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {member.user?.first_name} {member.user?.last_name}
-                          </p>
-                        </div>
+      {loading ? (
+        <div className="p-8 text-center text-brand-ink/55">
+          Loading staff members…
+        </div>
+      ) : staff.length === 0 ? (
+        <div className="p-8 text-center">
+          <FiUsers className="w-12 h-12 text-brand-ink/30 mx-auto mb-3" />
+          <p className="text-brand-ink/55">No staff members yet</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13.5px]">
+            <thead className="bg-[#fafcfb] border-b border-brand-ink/[0.07]">
+              <tr>
+                <th className="px-6 py-3 text-left text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">User</th>
+                <th className="px-6 py-3 text-left text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Email</th>
+                <th className="px-6 py-3 text-left text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Role</th>
+                <th className="px-6 py-3 text-left text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Joined</th>
+                <th className="px-6 py-3 text-left text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-brand-ink/[0.06]">
+              {staff.map((member) => (
+                <tr key={member.id} className="hover:bg-brand-surface/60 transition-colors">
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-brand-ink text-brand-surface flex items-center justify-center font-semibold text-xs flex-none">
+                        {getInitials(member.user?.username)}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <FiMail className="w-4 h-4" />
-                        {member.user?.email || 'No email'}
+                      <div>
+                        <p className="font-semibold">{member.user?.username || 'Unknown'}</p>
+                        <p className="text-xs text-brand-ink/55">{member.user?.first_name} {member.user?.last_name}</p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getRoleBadgeColor(member.role)}`}>
+                    </div>
+                  </td>
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex items-center gap-2 text-brand-ink/60">
+                      <FiMail className="w-4 h-4" />
+                      {member.user?.email || 'No email'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold" style={getRoleBadgeStyle(member.role)}>
                         <FiShield className="w-3 h-3" />
                         {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(member.joined_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {member.role !== 'owner' && (currentShop?.role === 'owner' || currentShop?.role === 'manager') && (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => openEditModal(member)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Edit role"
-                          >
-                            <FiEdit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleRemoveStaff(member.user?.id)}
-                            className="text-red-600 hover:text-red-800 transition-colors"
-                            title="Remove staff member"
-                          >
-                            <FiTrash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                      {member.invite_pending && (
+                        <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(217,139,43,0.14)', color: '#9a6319' }}>
+                          Pending
+                        </span>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-3.5 whitespace-nowrap text-brand-ink/55">
+                    {new Date(member.joined_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-3.5 whitespace-nowrap">
+                    {member.role !== 'owner' && (currentShop?.role === 'owner' || currentShop?.role === 'manager') && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => openEditModal(member)}
+                          className="text-brand-ink/60 hover:text-brand-ink transition-colors cursor-pointer"
+                          title="Edit role"
+                        >
+                          <FiEdit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveStaff(member.user?.id)}
+                          className="text-[#c8553d] hover:text-[#c8553d]/80 transition-colors cursor-pointer"
+                          title="Remove staff member"
+                        >
+                          <FiTrash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Add Staff Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-pos-text">Invite Staff Member</h3>
+        <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-brand-ink/10">
+              <h3 className="text-lg font-semibold">Invite staff member</h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-brand-ink/40 hover:text-brand-ink transition-colors cursor-pointer"
               >
                 <FiX className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddStaff} className="p-6 space-y-4">
+            <form onSubmit={handleAddStaff} className="p-6 grid gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
-                </label>
+                <label className={labelClass}>Full name (optional)</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className={inputClass}
+                  placeholder="Jane Wanjiru"
+                />
+              </div>
+
+              <div>
+                <label className={labelClass}>Email address</label>
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                  className={inputClass}
                   placeholder="staff@example.com"
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  The user must have an account with this email
+                <p className="mt-1.5 text-xs text-brand-ink/55">
+                  We'll email them a link to set their password
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
+                <label className={labelClass}>Role</label>
                 <select
                   name="role"
                   value={formData.role}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                  className={inputClass}
                 >
                   <option value="cashier">Cashier</option>
                   <option value="inventory">Inventory Staff</option>
                   <option value="manager">Manager</option>
                 </select>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1.5 text-xs text-brand-ink/55">
                   Defines what the staff member can access
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                 >
                   Invite
                 </button>
@@ -330,68 +333,66 @@ const StaffManagement = () => {
 
       {/* Edit Role Modal */}
       {showEditModal && selectedMember && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-pos-text">Edit Staff Role</h3>
+        <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-brand-ink/10">
+              <h3 className="text-lg font-semibold">Edit staff role</h3>
               <button
                 onClick={() => {
                   setShowEditModal(false)
                   setSelectedMember(null)
                 }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-brand-ink/40 hover:text-brand-ink transition-colors cursor-pointer"
               >
                 <FiX className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateRole} className="p-6 space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <div className="w-10 h-10 rounded-full bg-pos-primary text-white flex items-center justify-center font-medium">
+            <form onSubmit={handleUpdateRole} className="p-6 grid gap-4">
+              <div className="flex items-center gap-3 p-3 bg-brand-surface rounded-xl">
+                <div className="w-10 h-10 rounded-full bg-brand-ink text-brand-surface flex items-center justify-center font-semibold">
                   {getInitials(selectedMember.user?.username)}
                 </div>
                 <div>
-                  <p className="font-medium text-pos-text">{selectedMember.user?.username}</p>
-                  <p className="text-sm text-gray-500">{selectedMember.user?.email}</p>
+                  <p className="font-semibold">{selectedMember.user?.username}</p>
+                  <p className="text-sm text-brand-ink/55">{selectedMember.user?.email}</p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  New Role
-                </label>
+                <label className={labelClass}>New role</label>
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                  className={inputClass}
                 >
                   <option value="cashier">Cashier</option>
                   <option value="inventory">Inventory Staff</option>
                   <option value="manager">Manager</option>
                 </select>
-                <div className="mt-2 text-xs text-gray-500">
+                <div className="mt-2 text-xs text-brand-ink/55 grid gap-0.5">
                   <p><strong>Cashier:</strong> Can process sales and manage customers</p>
                   <p><strong>Inventory:</strong> Can manage products and stock</p>
                   <p><strong>Manager:</strong> Full access to all features</p>
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowEditModal(false)
                     setSelectedMember(null)
                   }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="flex-1 px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                 >
-                  Update Role
+                  Update role
                 </button>
               </div>
             </form>

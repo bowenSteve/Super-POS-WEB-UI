@@ -2,17 +2,21 @@ import { useState, useEffect, useRef } from "react"
 import { useAuth } from "../context/AuthContext"
 import { productsAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
-import ProfileDropdown from "../components/ProfileDropdown"
 import ToastNotification, { toast } from '../components/ToastNotification'
 
 function Inventory() {
-    const { currentShop } = useAuth()
+    const { user, currentShop } = useAuth()
     const [products, setProducts] = useState([])
     const [categories, setCategories] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
+    const [appliedSearch, setAppliedSearch] = useState("")
     const [selectedCategory, setSelectedCategory] = useState("")
     const [showLowStock, setShowLowStock] = useState(false)
+    const [page, setPage] = useState(1)
+    const [pageSize, setPageSize] = useState(20)
+    const [totalCount, setTotalCount] = useState(0)
+    const [totalPages, setTotalPages] = useState(1)
     const [showAddModal, setShowAddModal] = useState(false)
     const [showEditModal, setShowEditModal] = useState(false)
     const [showRestockModal, setShowRestockModal] = useState(false)
@@ -22,7 +26,7 @@ function Inventory() {
     const [importing, setImporting] = useState(false)
     const [importResults, setImportResults] = useState(null)
     const [showImportModal, setShowImportModal] = useState(false)
-    const fileInputRef = useRef(null) 
+    const fileInputRef = useRef(null)
     const [formData, setFormData] = useState({
         name: "",
         sku: "",
@@ -37,21 +41,42 @@ function Inventory() {
     const [restockAmount, setRestockAmount] = useState("")
 
     useEffect(() => {
-        fetchProducts()
         fetchCategories()
     }, [])
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setAppliedSearch(searchTerm)
+            setPage(1)
+        }, 350)
+        return () => clearTimeout(timer)
+    }, [searchTerm])
+
+    useEffect(() => {
+        fetchProducts()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [page, pageSize, appliedSearch, selectedCategory, showLowStock])
 
     const fetchProducts = async () => {
         setLoading(true)
         try {
-            const response = await productsAPI.getAll()
-            const productsData = response.data.results || response.data
+            const params = { page, page_size: pageSize, ordering: 'name' }
+            if (appliedSearch) params.search = appliedSearch
+            if (selectedCategory) params.category = selectedCategory
+            if (showLowStock) params.low_stock = true
+            const response = await productsAPI.getAll(params)
+            const data = response.data
+            const productsData = data.results || data
             setProducts(Array.isArray(productsData) ? productsData : [])
+            setTotalCount(typeof data.count === 'number' ? data.count : (Array.isArray(productsData) ? productsData.length : 0))
+            setTotalPages(typeof data.total_pages === 'number' ? data.total_pages : 1)
         } catch (err) {
             const errorMsg = err.response?.data?.detail || err.response?.data?.error || "Failed to fetch products"
             toast.error(errorMsg)
             console.error('Fetch products error:', err.response || err)
             setProducts([])
+            setTotalCount(0)
+            setTotalPages(1)
         } finally {
             setLoading(false)
         }
@@ -67,15 +92,6 @@ function Inventory() {
             toast.error("Failed to fetch categories")
         }
     }
-
-    const filteredProducts = products.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            product.sku.toLowerCase().includes(searchTerm.toLowerCase())
-        const matchesCategory = !selectedCategory || product.category === parseInt(selectedCategory)
-        const matchesLowStock = !showLowStock || product.is_low_stock
-
-        return matchesSearch && matchesCategory && matchesLowStock
-    })
 
     const handleInputChange = (e) => {
         setFormData({
@@ -292,14 +308,14 @@ function Inventory() {
     )
 
     const SearchIcon = () => (
-        <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="M21 21l-4.35-4.35"></path>
+        <svg className="w-4 h-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.5-3.5"></path>
         </svg>
     )
 
     const PlusIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
             <line x1="5" y1="12" x2="19" y2="12"></line>
         </svg>
@@ -328,41 +344,44 @@ function Inventory() {
         </svg>
     )
 
+    const initials = (user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase() + (user?.last_name?.[0] || '').toUpperCase()
+    const inputClass = 'w-full px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl outline-none focus:border-brand-ink transition-colors'
+    const labelClass = 'block text-sm font-semibold mb-1.5'
+
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-brand-surface font-sans text-brand-ink">
             <ToastNotification />
             <Sidebar />
-            <div className="flex-1 flex flex-col">
-                <header className="bg-white px-6 py-4 border-b border-pos-border flex items-center justify-between">
-                    <h1 className="text-xl font-semibold text-pos-text">Inventory Management</h1>
-                    <div className="flex items-center gap-4">
-                        {/* download excel sample */}
+            <div className="flex-1 min-w-0">
+                <header className="sticky top-0 z-20 bg-brand-surface/[0.9] backdrop-blur-md border-b border-brand-ink/[0.09]">
+                    <div className="flex items-center gap-3 px-8 py-4">
+                        <h1 className="text-[22px] font-semibold tracking-[-0.03em] flex-1">Inventory</h1>
                         <button
-                            className="inline-flex items-center gap-2 px-4 py-2 border-2 border-pos-primary text-pos-primary rounded-lg hover:bg-pos-primary hover:text-white transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-white transition-colors font-semibold text-sm cursor-pointer disabled:opacity-50"
                             onClick={handleDownloadSample}
                             disabled={importing}
                         >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
                                 <line x1="12" y1="15" x2="12" y2="3"></line>
                             </svg>
-                            Download Sample
+                            Sample
                         </button>
                         <button
-                            className="inline-flex items-center gap-2 px-4 py-2 border-2 border-pos-primary text-pos-primary rounded-lg hover:bg-pos-primary hover:text-white transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-white transition-colors font-semibold text-sm cursor-pointer disabled:opacity-50"
                             onClick={handleImportClick}
                             disabled={importing}
                         >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="17 14 12 9 7 14"></polyline>
                                 <line x1="12" y1="9" x2="12" y2="21"></line>
                             </svg>
-                            {importing ? 'Importing...' : 'Import Excel'}
+                            {importing ? 'Importing…' : 'Import Excel'}
                         </button>
                         <button
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                             onClick={() => {
                                 if (!currentShop) {
                                     toast.error("Please select a shop from your profile to add products")
@@ -372,138 +391,131 @@ function Inventory() {
                             }}
                         >
                             <PlusIcon />
-                            Add Product
+                            Add product
                         </button>
-                        <ProfileDropdown />
+                        <span className="w-[38px] h-[38px] rounded-full bg-brand-ink text-brand-surface grid place-items-center text-[13px] font-semibold">{initials}</span>
                     </div>
                 </header>
 
-                <main className="flex-1 p-6">
+                <main className="px-8 py-6">
                     {/* Filters */}
-                    <div className="bg-white rounded-xl p-4 mb-6">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="relative flex-1 min-w-[200px]">
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                    <SearchIcon />
-                                </div>
-                                <input
-                                    type="text"
-                                    className="w-full pl-10 pr-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                    placeholder="Search by name or SKU..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
+                    <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-3.5 flex flex-wrap items-center gap-3 mb-5">
+                        <label className="flex-1 min-w-[200px] flex items-center gap-2.5 bg-brand-surface rounded-xl px-3 h-[42px] focus-within:ring-1 focus-within:ring-brand-ink transition-shadow">
+                            <SearchIcon />
+                            <input
+                                type="text"
+                                className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm"
+                                placeholder="Search by name or SKU…"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </label>
 
-                            <div className="flex items-center gap-2">
-                                <select
-                                    className="px-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                                    value={selectedCategory}
-                                    onChange={(e) => setSelectedCategory(e.target.value)}
-                                >
-                                    <option value="">All Categories</option>
-                                    {categories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={() => {
-                                        if (!currentShop) {
-                                            toast.error("Please select a shop from your profile to add categories") // <--- Fixed
-                                            return
-                                        }
-                                        setShowCategoryModal(true)
-                                    }}
-                                    className="p-2 text-pos-primary hover:bg-pos-primary/10 rounded-lg transition-colors"
-                                    title="Add New Category"
-                                >
-                                    <PlusIcon />
-                                </button>
-                            </div>
+                        <select
+                            className="h-[42px] px-3.5 border border-brand-ink/[0.16] rounded-xl outline-none focus:border-brand-ink bg-white text-sm transition-colors"
+                            value={selectedCategory}
+                            onChange={(e) => { setSelectedCategory(e.target.value); setPage(1) }}
+                        >
+                            <option value="">All categories</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                        </select>
+                        <button
+                            onClick={() => {
+                                if (!currentShop) {
+                                    toast.error("Please select a shop from your profile to add categories")
+                                    return
+                                }
+                                setShowCategoryModal(true)
+                            }}
+                            className="w-[42px] h-[42px] grid place-items-center text-brand-ink hover:bg-brand-surface rounded-xl transition-colors cursor-pointer"
+                            title="Add new category"
+                        >
+                            <PlusIcon />
+                        </button>
 
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="w-4 h-4 rounded border-pos-border text-pos-primary focus:ring-pos-primary/20"
-                                    checked={showLowStock}
-                                    onChange={(e) => setShowLowStock(e.target.checked)}
-                                />
-                                <span className="text-sm text-gray-600">Low Stock Only</span>
-                            </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded accent-brand-ink"
+                                checked={showLowStock}
+                                onChange={(e) => { setShowLowStock(e.target.checked); setPage(1) }}
+                            />
+                            Low stock only
+                        </label>
 
-                            <div className="text-sm text-gray-600">
-                                Total Products: <span className="font-semibold text-pos-text">{filteredProducts.length}</span>
-                            </div>
+                        <div className="text-sm text-brand-ink/60">
+                            Total: <span className="font-semibold text-brand-ink">{totalCount}</span> products
                         </div>
                     </div>
 
                     {/* Products Table */}
                     {loading ? (
-                        <div className="bg-white rounded-xl p-12 text-center text-gray-500">
-                            Loading products...
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-12 text-center text-brand-ink/55">
+                            Loading products…
                         </div>
                     ) : (
-                        <div className="bg-white rounded-xl overflow-hidden">
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl overflow-hidden">
                             <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 border-b border-pos-border">
+                                <table className="w-full text-[13.5px]">
+                                    <thead className="bg-[#fafcfb] border-b border-brand-ink/[0.08]">
                                         <tr>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">SKU</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Product Name</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Category</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Cost Price</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Selling Price</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Stock</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Status</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+                                            <th className="text-left px-[18px] py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">SKU</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Product name</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Category</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Cost price</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Selling price</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Stock</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Status</th>
+                                            <th className="text-left px-[18px] py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-pos-border">
-                                        {filteredProducts.length === 0 ? (
+                                    <tbody className="divide-y divide-brand-ink/[0.06]">
+                                        {products.length === 0 ? (
                                             <tr>
-                                                <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                                                <td colSpan="8" className="px-4 py-12 text-center text-brand-ink/55">
                                                     No products found
                                                 </td>
                                             </tr>
                                         ) : (
-                                            filteredProducts.map(product => (
-                                                <tr key={product.id} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-3 font-mono text-sm text-pos-text">{product.sku}</td>
-                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">{product.name}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">{product.category_name}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">KSh {product.cost_price}</td>
-                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">KSh {product.selling_price}</td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                            product.is_low_stock
-                                                                ? 'bg-red-100 text-red-700'
-                                                                : 'bg-green-100 text-green-700'
-                                                        }`}>
+                                            products.map(product => (
+                                                <tr key={product.id} className="hover:bg-brand-surface/60 transition-colors">
+                                                    <td className="px-[18px] py-3 font-mono text-brand-ink/75">{product.sku}</td>
+                                                    <td className="px-3 py-3 font-semibold">{product.name}</td>
+                                                    <td className="px-3 py-3 text-brand-ink/65">{product.category_name}</td>
+                                                    <td className="px-3 py-3 font-mono text-brand-ink/65">KSh {product.cost_price}</td>
+                                                    <td className="px-3 py-3 font-mono font-medium">KSh {product.selling_price}</td>
+                                                    <td className="px-3 py-3">
+                                                        <span
+                                                            className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                            style={product.is_low_stock ? { background: 'rgba(200,85,61,0.12)', color: '#c8553d' } : { background: 'rgba(47,122,95,0.12)', color: '#2f7a5f' }}
+                                                        >
                                                             {product.stock_quantity}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-3 py-3">
                                                         {product.is_low_stock ? (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                                                Low Stock
+                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(20,55,59,0.08)', color: 'rgba(20,55,59,0.6)' }}>
+                                                                Low stock
                                                             </span>
                                                         ) : (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                                                In Stock
+                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(47,122,95,0.12)', color: '#2f7a5f' }}>
+                                                                In stock
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-2">
+                                                    <td className="px-[18px] py-3">
+                                                        <div className="flex items-center gap-1">
                                                             <button
-                                                                className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                                                className="p-2 text-brand-ink/55 hover:text-brand-ink hover:bg-brand-surface rounded-lg transition-colors cursor-pointer"
                                                                 onClick={() => openEditModal(product)}
-                                                                title="Edit Product"
+                                                                title="Edit product"
                                                             >
                                                                 <EditIcon />
                                                             </button>
                                                             <button
-                                                                className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                                                className="p-2 text-brand-ink/55 hover:text-brand-ink hover:bg-brand-surface rounded-lg transition-colors cursor-pointer"
                                                                 onClick={() => openRestockModal(product)}
                                                                 title="Restock"
                                                             >
@@ -519,7 +531,53 @@ function Inventory() {
                             </div>
                         </div>
                     )}
+
+                    {/* Pagination */}
+                    {!loading && totalCount > 0 && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                            <div className="text-sm text-brand-ink/55">
+                                Showing <span className="font-semibold text-brand-ink">{(page - 1) * pageSize + 1}</span>
+                                {'–'}
+                                <span className="font-semibold text-brand-ink">{Math.min(page * pageSize, totalCount)}</span> of{' '}
+                                <span className="font-semibold text-brand-ink">{totalCount}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-2 text-sm text-brand-ink/60">
+                                    Show
+                                    <select
+                                        className="h-9 px-2.5 border border-brand-ink/[0.16] rounded-lg outline-none focus:border-brand-ink bg-white text-sm transition-colors"
+                                        value={pageSize}
+                                        onChange={(e) => { setPageSize(parseInt(e.target.value)); setPage(1) }}
+                                    >
+                                        <option value={20}>20</option>
+                                        <option value={50}>50</option>
+                                        <option value={100}>100</option>
+                                    </select>
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                        disabled={page <= 1}
+                                        className="h-9 px-3 border border-brand-ink/[0.16] rounded-lg text-sm font-semibold hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                    >
+                                        Prev
+                                    </button>
+                                    <span className="text-sm text-brand-ink/60 px-1">
+                                        Page <span className="font-semibold text-brand-ink">{page}</span> of {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                                        disabled={page >= totalPages}
+                                        className="h-9 px-3 border border-brand-ink/[0.16] rounded-lg text-sm font-semibold hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </main>
+
                 {/* Hidden file input */}
                 <input
                     ref={fileInputRef}
@@ -531,11 +589,11 @@ function Inventory() {
 
                 {/* Import Results Modal */}
                 {showImportModal && importResults && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowImportModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Import Results</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowImportModal(false)}>
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowImportModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Import results</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowImportModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
@@ -543,31 +601,31 @@ function Inventory() {
                             <div className="flex-1 overflow-y-auto p-6">
                                 {/* Summary */}
                                 <div className="grid grid-cols-3 gap-4 mb-6">
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <p className="text-sm text-gray-600 font-medium mb-1">Total Rows</p>
-                                        <p className="text-2xl font-bold text-gray-900">{importResults.total_rows}</p>
+                                    <div className="bg-brand-surface rounded-xl p-4">
+                                        <p className="text-sm text-brand-ink/60 font-medium mb-1">Total rows</p>
+                                        <p className="text-2xl font-semibold">{importResults.total_rows}</p>
                                     </div>
-                                    <div className="bg-green-50 rounded-lg p-4">
-                                        <p className="text-sm text-green-600 font-medium mb-1">Successful</p>
-                                        <p className="text-2xl font-bold text-green-900">{importResults.success.length}</p>
+                                    <div className="rounded-xl p-4" style={{ background: 'rgba(47,122,95,0.1)' }}>
+                                        <p className="text-sm font-medium mb-1" style={{ color: '#2f7a5f' }}>Successful</p>
+                                        <p className="text-2xl font-semibold" style={{ color: '#2f7a5f' }}>{importResults.success.length}</p>
                                     </div>
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <p className="text-sm text-gray-600 font-medium mb-1">Failed</p>
-                                        <p className="text-2xl font-bold text-gray-900">{importResults.errors.length}</p>
+                                    <div className="bg-brand-surface rounded-xl p-4">
+                                        <p className="text-sm text-brand-ink/60 font-medium mb-1">Failed</p>
+                                        <p className="text-2xl font-semibold">{importResults.errors.length}</p>
                                     </div>
                                 </div>
 
                                 {/* Success List */}
                                 {importResults.success.length > 0 && (
                                     <div className="mb-6">
-                                        <h3 className="text-sm font-semibold text-green-700 mb-3 flex items-center gap-2">
+                                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: '#2f7a5f' }}>
                                             <CheckIcon />
-                                            Successfully Imported ({importResults.success.length})
+                                            Successfully imported ({importResults.success.length})
                                         </h3>
-                                        <div className="bg-green-50 rounded-lg p-4 max-h-48 overflow-y-auto">
+                                        <div className="rounded-xl p-4 max-h-48 overflow-y-auto" style={{ background: 'rgba(47,122,95,0.08)' }}>
                                             <div className="space-y-2">
                                                 {importResults.success.map((item) => (
-                                                    <div key={`success-${item.row}-${item.sku}`} className="text-sm text-green-800">
+                                                    <div key={`success-${item.row}-${item.sku}`} className="text-sm" style={{ color: '#2f7a5f' }}>
                                                         Row {item.row}: {item.name} (SKU: {item.sku})
                                                     </div>
                                                 ))}
@@ -579,20 +637,20 @@ function Inventory() {
                                 {/* Errors List */}
                                 {importResults.errors.length > 0 && (
                                     <div>
-                                        <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                        <h3 className="text-sm font-semibold text-brand-ink/75 mb-3 flex items-center gap-2">
                                             <AlertIcon />
                                             Errors ({importResults.errors.length})
                                         </h3>
-                                        <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto">
+                                        <div className="bg-brand-surface rounded-xl p-4 max-h-64 overflow-y-auto">
                                             <div className="space-y-3">
                                                 {importResults.errors.map((item) => (
-                                                    <div key={`error-${item.row}`} className="bg-white rounded-lg p-3 border border-gray-200">
-                                                        <p className="text-sm font-medium text-gray-900 mb-1">
+                                                    <div key={`error-${item.row}`} className="bg-white rounded-xl p-3 border border-brand-ink/[0.08]">
+                                                        <p className="text-sm font-semibold mb-1">
                                                             Row {item.row}
                                                         </p>
-                                                        <p className="text-sm text-gray-700">{item.error}</p>
+                                                        <p className="text-sm text-brand-ink/70">{item.error}</p>
                                                         {item.data && (
-                                                            <p className="text-xs text-gray-600 mt-1">
+                                                            <p className="text-xs text-brand-ink/50 mt-1">
                                                                 {item.data.sku && `SKU: ${item.data.sku}, `}
                                                                 {item.data.name && `Name: ${item.data.name}`}
                                                             </p>
@@ -605,9 +663,9 @@ function Inventory() {
                                 )}
                             </div>
 
-                            <div className="flex justify-end gap-3 px-6 py-4 border-t border-pos-border">
+                            <div className="flex justify-end gap-3 px-6 py-4 border-t border-brand-ink/10">
                                 <button
-                                    className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
+                                    className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                                     onClick={() => setShowImportModal(false)}
                                 >
                                     Close
@@ -619,137 +677,71 @@ function Inventory() {
 
                 {/* Add Product Modal */}
                 {showAddModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Add New Product</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowAddModal(false)}>
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Add new product</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowAddModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddProduct} className="p-6 space-y-4">
+                            <form onSubmit={handleAddProduct} className="p-6 grid gap-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
-                                        <input
-                                            type="text"
-                                            name="name"
-                                            value={formData.name}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Product name *</label>
+                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">SKU *</label>
-                                        <input
-                                            type="text"
-                                            name="sku"
-                                            value={formData.sku}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>SKU *</label>
+                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                                        <select
-                                            name="category"
-                                            value={formData.category}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                                        >
-                                            <option value="">Select Category</option>
+                                        <label className={labelClass}>Category *</label>
+                                        <select name="category" value={formData.category} onChange={handleInputChange} required className={`${inputClass} bg-white`}>
+                                            <option value="">Select category</option>
                                             {categories.map(cat => (
                                                 <option key={cat.id} value={cat.id}>{cat.name}</option>
                                             ))}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Initial Stock *</label>
-                                        <input
-                                            type="number"
-                                            name="stock_quantity"
-                                            value={formData.stock_quantity}
-                                            onChange={handleInputChange}
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Initial stock *</label>
+                                        <input type="number" name="stock_quantity" value={formData.stock_quantity} onChange={handleInputChange} min="0" required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KSh) *</label>
-                                        <input
-                                            type="number"
-                                            name="cost_price"
-                                            value={formData.cost_price}
-                                            onChange={handleInputChange}
-                                            step="0.01"
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Cost price (KSh) *</label>
+                                        <input type="number" name="cost_price" value={formData.cost_price} onChange={handleInputChange} step="0.01" min="0" required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price (KSh) *</label>
-                                        <input
-                                            type="number"
-                                            name="selling_price"
-                                            value={formData.selling_price}
-                                            onChange={handleInputChange}
-                                            step="0.01"
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Selling price (KSh) *</label>
+                                        <input type="number" name="selling_price" value={formData.selling_price} onChange={handleInputChange} step="0.01" min="0" required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
-                                    <input
-                                        type="number"
-                                        name="reorder_level"
-                                        value={formData.reorder_level}
-                                        onChange={handleInputChange}
-                                        min="0"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">Alert when stock falls below this level</p>
+                                    <label className={labelClass}>Reorder level</label>
+                                    <input type="number" name="reorder_level" value={formData.reorder_level} onChange={handleInputChange} min="0" className={inputClass} />
+                                    <p className="text-xs text-brand-ink/50 mt-1">Alert when stock falls below this level</p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                                    <textarea
-                                        name="description"
-                                        value={formData.description}
-                                        onChange={handleInputChange}
-                                        rows="3"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                    />
+                                    <label className={labelClass}>Description</label>
+                                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows="3" className={`${inputClass} resize-none`} />
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowAddModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowAddModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
-                                        Add Product
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
+                                        Add product
                                     </button>
                                 </div>
                             </form>
@@ -759,136 +751,70 @@ function Inventory() {
 
                 {/* Edit Product Modal */}
                 {showEditModal && selectedProduct && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Edit Product</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowEditModal(false)}>
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Edit product</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowEditModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleEditProduct} className="p-6 space-y-4">
+                            <form onSubmit={handleEditProduct} className="p-6 grid gap-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
-                                        <input
-                                            type="text"
-                                            name="name"
-                                            value={formData.name}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Product name *</label>
+                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">SKU *</label>
-                                        <input
-                                            type="text"
-                                            name="sku"
-                                            value={formData.sku}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>SKU *</label>
+                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                                        <select
-                                            name="category"
-                                            value={formData.category}
-                                            onChange={handleInputChange}
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                                        >
-                                            <option value="">Select Category</option>
+                                        <label className={labelClass}>Category *</label>
+                                        <select name="category" value={formData.category} onChange={handleInputChange} required className={`${inputClass} bg-white`}>
+                                            <option value="">Select category</option>
                                             {categories.map(cat => (
                                                 <option key={cat.id} value={cat.id}>{cat.name}</option>
                                             ))}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Stock Quantity *</label>
-                                        <input
-                                            type="number"
-                                            name="stock_quantity"
-                                            value={formData.stock_quantity}
-                                            onChange={handleInputChange}
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Stock quantity *</label>
+                                        <input type="number" name="stock_quantity" value={formData.stock_quantity} onChange={handleInputChange} min="0" required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Cost Price (KSh) *</label>
-                                        <input
-                                            type="number"
-                                            name="cost_price"
-                                            value={formData.cost_price}
-                                            onChange={handleInputChange}
-                                            step="0.01"
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Cost price (KSh) *</label>
+                                        <input type="number" name="cost_price" value={formData.cost_price} onChange={handleInputChange} step="0.01" min="0" required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price (KSh) *</label>
-                                        <input
-                                            type="number"
-                                            name="selling_price"
-                                            value={formData.selling_price}
-                                            onChange={handleInputChange}
-                                            step="0.01"
-                                            min="0"
-                                            required
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Selling price (KSh) *</label>
+                                        <input type="number" name="selling_price" value={formData.selling_price} onChange={handleInputChange} step="0.01" min="0" required className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
-                                    <input
-                                        type="number"
-                                        name="reorder_level"
-                                        value={formData.reorder_level}
-                                        onChange={handleInputChange}
-                                        min="0"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                    />
+                                    <label className={labelClass}>Reorder level</label>
+                                    <input type="number" name="reorder_level" value={formData.reorder_level} onChange={handleInputChange} min="0" className={inputClass} />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                                    <textarea
-                                        name="description"
-                                        value={formData.description}
-                                        onChange={handleInputChange}
-                                        rows="3"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                    />
+                                    <label className={labelClass}>Description</label>
+                                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows="3" className={`${inputClass} resize-none`} />
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowEditModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowEditModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
-                                        Update Product
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
+                                        Update product
                                     </button>
                                 </div>
                             </form>
@@ -898,23 +824,23 @@ function Inventory() {
 
                 {/* Restock Modal */}
                 {showRestockModal && selectedProduct && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRestockModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Restock Product</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowRestockModal(false)}>
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowRestockModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Restock product</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowRestockModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleRestock} className="p-6 space-y-4">
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <p className="text-sm text-gray-600">Product: <span className="font-medium text-pos-text">{selectedProduct.name}</span></p>
-                                    <p className="text-sm text-gray-600">Current Stock: <span className="font-medium text-pos-text">{selectedProduct.stock_quantity} units</span></p>
+                            <form onSubmit={handleRestock} className="p-6 grid gap-4">
+                                <div className="bg-brand-surface rounded-xl p-4">
+                                    <p className="text-sm text-brand-ink/65">Product: <span className="font-semibold text-brand-ink">{selectedProduct.name}</span></p>
+                                    <p className="text-sm text-brand-ink/65">Current stock: <span className="font-semibold text-brand-ink">{selectedProduct.stock_quantity} units</span></p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Add Quantity *</label>
+                                    <label className={labelClass}>Add quantity *</label>
                                     <input
                                         type="number"
                                         value={restockAmount}
@@ -922,28 +848,21 @@ function Inventory() {
                                         min="1"
                                         required
                                         autoFocus
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                        className={inputClass}
                                     />
                                 </div>
 
                                 {restockAmount && (
-                                    <div className="bg-green-50 rounded-lg p-3 text-sm text-green-700">
-                                        New Stock: <span className="font-semibold">{parseInt(selectedProduct.stock_quantity) + parseInt(restockAmount)} units</span>
+                                    <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(47,122,95,0.1)', color: '#2f7a5f' }}>
+                                        New stock: <span className="font-semibold">{parseInt(selectedProduct.stock_quantity) + parseInt(restockAmount)} units</span>
                                     </div>
                                 )}
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowRestockModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowRestockModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
                                         Restock
                                     </button>
                                 </div>
@@ -954,18 +873,18 @@ function Inventory() {
 
                 {/* Add Category Modal */}
                 {showCategoryModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCategoryModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Add New Category</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowCategoryModal(false)}>
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowCategoryModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Add new category</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowCategoryModal(false)}>
                                     <CloseIcon />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleCreateCategory} className="p-6 space-y-4">
+                            <form onSubmit={handleCreateCategory} className="p-6 grid gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                                    <label className={labelClass}>Category name *</label>
                                     <input
                                         type="text"
                                         name="name"
@@ -973,36 +892,29 @@ function Inventory() {
                                         onChange={handleCategoryInputChange}
                                         required
                                         autoFocus
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                                        className={inputClass}
                                         placeholder="e.g., Electronics, Beverages"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                    <label className={labelClass}>Description</label>
                                     <textarea
                                         name="description"
                                         value={categoryFormData.description}
                                         onChange={handleCategoryInputChange}
                                         rows="3"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
+                                        className={`${inputClass} resize-none`}
                                         placeholder="Optional category description"
                                     />
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowCategoryModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowCategoryModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
-                                        Create Category
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
+                                        Create category
                                     </button>
                                 </div>
                             </form>

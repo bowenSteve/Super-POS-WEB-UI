@@ -2,11 +2,11 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from "../components/Sidebar"
 import { ProfileSettings } from "../features/profile"
 import { useAuth } from '../context/AuthContext'
-import { FiUser, FiArrowLeft, FiShoppingBag, FiCheck, FiPlus, FiLogOut, FiUsers } from 'react-icons/fi'
+import { FiArrowLeft, FiShoppingBag, FiCheck, FiPlus, FiLogOut, FiUsers } from 'react-icons/fi'
 
 function Profile() {
     const navigate = useNavigate()
-    const { shops, currentShop, switchShop, logout } = useAuth()
+    const { user, shops, currentShop, switchShop, logout } = useAuth()
 
     const handleShopSwitch = (shop) => {
         switchShop(shop)
@@ -17,47 +17,45 @@ function Profile() {
         navigate('/login')
     }
 
+    const initials = (user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase() + (user?.last_name?.[0] || '').toUpperCase()
+
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-brand-surface font-sans text-brand-ink">
             <Sidebar />
 
-            <div className="flex-1 flex flex-col min-w-0">
-                {/* Header */}
-                <header className="bg-white px-6 py-4 border-b border-pos-border">
-                    <div className="flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+                <header className="sticky top-0 z-20 bg-brand-surface/[0.9] backdrop-blur-md border-b border-brand-ink/[0.09]">
+                    <div className="flex items-center gap-4 px-8 py-4">
                         <button
                             onClick={() => navigate(-1)}
-                            className="p-2 hover:bg-pos-hover rounded-lg transition-colors"
+                            className="w-10 h-10 grid place-items-center bg-white border border-brand-ink/[0.12] rounded-[11px] hover:bg-white/80 transition-colors cursor-pointer"
                         >
-                            <FiArrowLeft className="w-5 h-5 text-gray-600" />
+                            <FiArrowLeft className="w-4 h-4" />
                         </button>
-                        <div className="flex items-center gap-3">
-                            <FiUser className="w-6 h-6 text-pos-primary" />
-                            <h1 className="text-2xl font-bold text-pos-text">My Profile</h1>
-                        </div>
+                        <h1 className="text-[22px] font-semibold tracking-[-0.03em] flex-1">My profile</h1>
+                        <span className="w-[38px] h-[38px] rounded-full bg-brand-ink text-brand-surface grid place-items-center text-[13px] font-semibold">{initials}</span>
                     </div>
                 </header>
 
-                {/* Main Content */}
-                <main className="flex-1 overflow-y-auto p-6">
-                    <div className="max-w-4xl space-y-6">
+                <main className="px-8 py-6">
+                    <div className="max-w-4xl grid gap-5">
                         {/* Shop Selector Section */}
-                        <div className="bg-white rounded-lg shadow p-6">
+                        <div className="bg-white rounded-2xl border border-brand-ink/[0.09] p-6">
                             <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold text-pos-text flex items-center gap-2">
-                                    <FiShoppingBag className="w-5 h-5 text-pos-primary" />
-                                    My Shops
+                                <h2 className="text-base font-semibold flex items-center gap-2.5">
+                                    <FiShoppingBag className="w-5 h-5 text-brand-ink/60" />
+                                    My shops
                                 </h2>
                                 <button
                                     onClick={() => navigate('/create-shop')}
-                                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors"
+                                    className="flex items-center gap-2 px-3.5 py-2 text-sm bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                                 >
                                     <FiPlus className="w-4 h-4" />
-                                    Create Shop
+                                    Create shop
                                 </button>
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="grid gap-2">
                                 {shops && shops.length > 0 ? (
                                     shops.filter(sm => sm?.shop).map((shopMembership) => {
                                         const shop = shopMembership.shop
@@ -67,33 +65,29 @@ function Profile() {
                                             <button
                                                 key={shop.id}
                                                 onClick={() => handleShopSwitch(shopMembership)}
-                                                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors ${
-                                                    isSelected
-                                                        ? 'bg-pos-primary/10 border-2 border-pos-primary'
-                                                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                                                }`}
+                                                className="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors cursor-pointer"
+                                                style={{
+                                                    background: isSelected ? 'rgba(20,55,59,0.06)' : '#f0f8f5',
+                                                    border: `1.5px solid ${isSelected ? '#14373b' : 'transparent'}`
+                                                }}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <FiShoppingBag className={`w-5 h-5 ${isSelected ? 'text-pos-primary' : 'text-gray-400'}`} />
+                                                    <FiShoppingBag className="w-5 h-5" style={{ color: isSelected ? '#14373b' : 'rgba(20,55,59,0.35)' }} />
                                                     <div className="text-left">
-                                                        <p className={`text-sm font-medium ${isSelected ? 'text-pos-primary' : 'text-pos-text'}`}>
-                                                            {shop.name}
-                                                        </p>
-                                                        <p className="text-xs text-gray-500 capitalize">{shopMembership.role}</p>
+                                                        <p className="text-sm font-semibold">{shop.name}</p>
+                                                        <p className="text-xs text-brand-ink/55 capitalize">{shopMembership.role}</p>
                                                     </div>
                                                 </div>
-                                                {isSelected && (
-                                                    <FiCheck className="w-5 h-5 text-pos-primary" />
-                                                )}
+                                                {isSelected && <FiCheck className="w-5 h-5" />}
                                             </button>
                                         )
                                     })
                                 ) : (
                                     <div className="text-center py-6">
-                                        <p className="text-gray-500 mb-3">No shops available</p>
+                                        <p className="text-brand-ink/55 mb-3">No shops available</p>
                                         <button
                                             onClick={() => navigate('/create-shop')}
-                                            className="text-pos-primary hover:underline"
+                                            className="text-brand-ink font-semibold hover:underline cursor-pointer"
                                         >
                                             Create your first shop
                                         </button>
@@ -106,27 +100,27 @@ function Profile() {
                         <ProfileSettings />
 
                         {/* Quick Actions */}
-                        <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-lg font-semibold text-pos-text mb-4">Quick Actions</h2>
-                            <div className="space-y-2">
+                        <div className="bg-white rounded-2xl border border-brand-ink/[0.09] p-6">
+                            <h2 className="text-base font-semibold mb-4">Quick actions</h2>
+                            <div className="grid gap-1">
                                 <button
                                     onClick={() => navigate('/settings')}
-                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-brand-surface transition-colors text-left cursor-pointer"
                                 >
-                                    <FiUsers className="w-5 h-5 text-pos-primary" />
+                                    <FiUsers className="w-5 h-5 text-brand-ink/60" />
                                     <div>
-                                        <p className="text-sm font-medium text-pos-text">Staff Management</p>
-                                        <p className="text-xs text-gray-500">Manage staff members and permissions</p>
+                                        <p className="text-sm font-semibold">Staff management</p>
+                                        <p className="text-xs text-brand-ink/55">Manage staff members and permissions</p>
                                     </div>
                                 </button>
                                 <button
                                     onClick={handleLogout}
-                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-red-50 transition-colors text-left"
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-[#c8553d]/5 transition-colors text-left cursor-pointer"
                                 >
-                                    <FiLogOut className="w-5 h-5 text-red-600" />
+                                    <FiLogOut className="w-5 h-5 text-[#c8553d]" />
                                     <div>
-                                        <p className="text-sm font-medium text-red-600">Logout</p>
-                                        <p className="text-xs text-red-400">Sign out of your account</p>
+                                        <p className="text-sm font-semibold text-[#c8553d]">Logout</p>
+                                        <p className="text-xs text-[#c8553d]/70">Sign out of your account</p>
                                     </div>
                                 </button>
                             </div>

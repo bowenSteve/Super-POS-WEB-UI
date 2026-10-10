@@ -121,7 +121,7 @@ function OTPInput({ value = '', onChange, length = 6 }) {
                     onKeyDown={(e) => handleKeyDown(index, e)}
                     onPaste={handlePaste}
                     onFocus={() => handleFocus(index)}
-                    className="w-12 h-12 text-center text-lg font-semibold border-2 border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/50 focus:border-pos-primary transition-all"
+                    className="w-12 h-12 text-center text-lg font-semibold border-2 border-brand-ink/[0.16] rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-ink/30 focus:border-brand-ink transition-all"
                     autoFocus={index === 0}
                 />
             ))}

@@ -1,13 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { shopsAPI } from '../api/api'
 import { useAuth } from '../context/AuthContext'
+import { getRootDomain } from '../utils/tenant'
+
+const inputClass = 'h-11 bg-white border border-brand-ink/[0.16] rounded-[11px] px-3.5 text-[14.5px] outline-none focus:border-brand-ink transition-colors w-full'
+const labelClass = 'text-[13px] font-semibold'
 
 function CreateShop() {
   const navigate = useNavigate()
   const { fetchUserShops, switchShop } = useAuth()
   const [formData, setFormData] = useState({
     name: '',
+    slug: '',
     phone: '',
     email: '',
     address: '',
@@ -16,6 +21,9 @@ function CreateShop() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [slugStatus, setSlugStatus] = useState(null)
+  const [checkingSlug, setCheckingSlug] = useState(false)
+  const slugCheckTimer = useRef(null)
 
   const handleChange = (e) => {
     setFormData({
@@ -23,6 +31,24 @@ function CreateShop() {
       [e.target.name]: e.target.value
     })
   }
+
+  useEffect(() => {
+    const slug = formData.slug.trim()
+    if (!slug) { setSlugStatus(null); return }
+    setCheckingSlug(true)
+    clearTimeout(slugCheckTimer.current)
+    slugCheckTimer.current = setTimeout(async () => {
+      try {
+        const response = await shopsAPI.checkSlug(slug)
+        setSlugStatus(response.data)
+      } catch (_) {
+        setSlugStatus(null)
+      } finally {
+        setCheckingSlug(false)
+      }
+    }, 300)
+    return () => clearTimeout(slugCheckTimer.current)
+  }, [formData.slug])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -54,28 +80,28 @@ function CreateShop() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create Your Shop
+    <div className="min-h-screen bg-brand-surface font-sans text-brand-ink flex items-center justify-center py-12 px-4">
+      <div className="max-w-md w-full grid gap-6">
+        <div className="text-center">
+          <h2 className="text-[26px] font-semibold tracking-[-0.03em]">
+            Create your shop
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-1.5 text-sm text-brand-ink/58">
             Set up your shop to start managing your business
           </p>
         </div>
 
-        <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow" onSubmit={handleSubmit}>
+        <form className="bg-white border border-brand-ink/[0.09] rounded-2xl p-7 grid gap-5" onSubmit={handleSubmit}>
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+            <div className="px-4 py-3 rounded-xl text-sm" style={{ background: 'rgba(200,85,61,0.1)', border: '1px solid rgba(200,85,61,0.25)', color: '#c8553d' }}>
               {error}
             </div>
           )}
 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Shop Name *
+          <div className="grid gap-4">
+            <div className="grid gap-[7px]">
+              <label htmlFor="name" className={labelClass}>
+                Shop name *
               </label>
               <input
                 id="name"
@@ -84,14 +110,46 @@ function CreateShop() {
                 required
                 value={formData.name}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className={inputClass}
                 placeholder="My Shop"
               />
             </div>
 
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone Number
+            <div className="grid gap-[7px]">
+              <label htmlFor="slug" className={labelClass}>
+                Workspace address
+              </label>
+              <div className="h-11 flex items-center bg-white border border-brand-ink/[0.16] rounded-[11px] pl-3.5 pr-3 focus-within:border-brand-ink transition-colors">
+                <input
+                  id="slug"
+                  name="slug"
+                  type="text"
+                  value={formData.slug}
+                  onChange={handleChange}
+                  className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[14.5px]"
+                  placeholder="mama-njeri"
+                />
+                <span className="text-sm text-brand-ink/40 whitespace-nowrap">.{getRootDomain()}</span>
+              </div>
+              {formData.slug && (
+                <p className="text-xs font-medium" style={{ color: checkingSlug ? 'rgba(20,55,59,0.45)' : slugStatus?.available ? '#2f7a5f' : '#c8553d' }}>
+                  {checkingSlug
+                    ? 'Checking…'
+                    : slugStatus?.available
+                      ? 'Available'
+                      : slugStatus?.reason === 'reserved'
+                        ? 'That address is reserved (try another)'
+                        : slugStatus?.reason === 'invalid_format'
+                          ? 'Use lowercase letters, numbers and hyphens only'
+                          : 'That address is already taken'}
+                </p>
+              )}
+              <p className="text-xs text-brand-ink/45">Leave blank to auto-generate one from the shop name.</p>
+            </div>
+
+            <div className="grid gap-[7px]">
+              <label htmlFor="phone" className={labelClass}>
+                Phone number
               </label>
               <input
                 id="phone"
@@ -99,13 +157,13 @@ function CreateShop() {
                 type="tel"
                 value={formData.phone}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className={inputClass}
                 placeholder="+254 712 345 678"
               />
             </div>
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            <div className="grid gap-[7px]">
+              <label htmlFor="email" className={labelClass}>
                 Email
               </label>
               <input
@@ -114,13 +172,13 @@ function CreateShop() {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className={inputClass}
                 placeholder="shop@example.com"
               />
             </div>
 
-            <div>
-              <label htmlFor="address" className="block text-sm font-medium text-gray-700">
+            <div className="grid gap-[7px]">
+              <label htmlFor="address" className={labelClass}>
                 Address
               </label>
               <textarea
@@ -129,14 +187,14 @@ function CreateShop() {
                 rows="3"
                 value={formData.address}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="bg-white border border-brand-ink/[0.16] rounded-[11px] px-3.5 py-3 text-[14.5px] outline-none focus:border-brand-ink transition-colors resize-y"
                 placeholder="Shop address"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="currency" className="block text-sm font-medium text-gray-700">
+              <div className="grid gap-[7px]">
+                <label htmlFor="currency" className={labelClass}>
                   Currency
                 </label>
                 <select
@@ -144,7 +202,7 @@ function CreateShop() {
                   name="currency"
                   value={formData.currency}
                   onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={inputClass}
                 >
                   <option value="KSh">KSh (Kenyan Shilling)</option>
                   <option value="USD">USD (US Dollar)</option>
@@ -153,9 +211,9 @@ function CreateShop() {
                 </select>
               </div>
 
-              <div>
-                <label htmlFor="tax_rate" className="block text-sm font-medium text-gray-700">
-                  Tax Rate (%)
+              <div className="grid gap-[7px]">
+                <label htmlFor="tax_rate" className={labelClass}>
+                  Tax rate (%)
                 </label>
                 <input
                   id="tax_rate"
@@ -166,27 +224,27 @@ function CreateShop() {
                   max="100"
                   value={formData.tax_rate}
                   onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className={inputClass}
                   placeholder="16.00"
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex gap-3 pt-1">
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="flex-1 h-11 border border-brand-ink/[0.16] rounded-xl text-sm font-semibold hover:bg-brand-surface transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400"
+              disabled={loading || (formData.slug && slugStatus && !slugStatus.available)}
+              className="flex-1 h-11 bg-brand-ink text-brand-surface rounded-xl text-sm font-semibold hover:bg-brand-ink/90 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              {loading ? 'Creating...' : 'Create Shop'}
+              {loading ? 'Creating…' : 'Create shop'}
             </button>
           </div>
         </form>

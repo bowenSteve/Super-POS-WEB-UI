@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 import Sidebar from "../components/Sidebar"
-import ProfileDropdown from "../components/ProfileDropdown"
 import { ProfileSettings, StaffManagement } from "../features/profile"
 import { useAuth } from "../context/AuthContext"
 import { shopsAPI } from "../api/api"
-import { FiUser, FiUsers, FiSettings, FiShoppingBag, FiPercent, FiFileText, FiSave } from 'react-icons/fi'
+import { getRootDomain } from "../utils/tenant"
 import ToastNotification, { toast } from '../components/ToastNotification'
 
-// Default settings
 const defaultTaxSettings = {
     enabled: true,
     rate: 16,
@@ -29,74 +27,69 @@ const defaultReceiptSettings = {
     fontSize: 'medium'
 }
 
+const TABS = [
+    { id: 'shop', label: 'Shop', sub: 'Name, contact, region' },
+    { id: 'profile', label: 'Profile', sub: 'Your details & password' },
+    { id: 'staff', label: 'Staff', sub: 'People & roles' },
+    { id: 'tax', label: 'Tax', sub: 'VAT & KRA PIN' },
+    { id: 'receipt', label: 'Receipt', sub: 'Layout & messages' },
+]
+
+const inputClass = 'h-11 bg-white border border-brand-ink/[0.16] rounded-[11px] px-3.5 text-[14.5px] outline-none focus:border-brand-ink transition-colors w-full'
+const labelClass = 'text-[13px] font-semibold'
+
+function Toggle({ on, onClick, ariaLabel }) {
+    return (
+        <button
+            onClick={onClick}
+            role="switch"
+            aria-checked={on}
+            aria-label={ariaLabel}
+            className="w-[46px] h-[26px] border-0 rounded-full relative cursor-pointer flex-none transition-colors"
+            style={{ background: on ? '#14373b' : 'rgba(20,55,59,0.2)' }}
+        >
+            <span
+                className="absolute top-[3px] w-5 h-5 rounded-full bg-white shadow-sm transition-all"
+                style={{ left: on ? '23px' : '3px' }}
+            />
+        </button>
+    )
+}
+
 function Settings() {
     const { currentShop, updateCurrentShop } = useAuth()
-    const [activeTab, setActiveTab] = useState('shop')
+    const [tab, setTab] = useState('shop')
     const [saving, setSaving] = useState(false)
     const [loading, setLoading] = useState(true)
+    const [dirty, setDirty] = useState(false)
+    const [saved, setSaved] = useState(false)
+    const [copied, setCopied] = useState(false)
 
-    // Shop Settings State
     const [shopSettings, setShopSettings] = useState({
-        name: '',
-        address: '',
-        phone: '',
-        email: '',
-        currency: 'KES',
-        timezone: 'Africa/Nairobi'
+        name: '', address: '', phone: '', email: '', currency: 'KES', timezone: 'Africa/Nairobi'
     })
-
-    // Tax Settings State
     const [taxSettings, setTaxSettings] = useState(defaultTaxSettings)
-
-    // Receipt Settings State
     const [receiptSettings, setReceiptSettings] = useState(defaultReceiptSettings)
 
-    const tabs = [
-        { id: 'shop', label: 'Shop', icon: FiShoppingBag },
-        { id: 'profile', label: 'Profile', icon: FiUser },
-        { id: 'staff', label: 'Staff', icon: FiUsers },
-        { id: 'tax', label: 'Tax', icon: FiPercent },
-        { id: 'receipt', label: 'Receipt', icon: FiFileText },
-    ]
-
-    // Load settings from currentShop when it changes
     useEffect(() => {
-        if (currentShop) {
-            // Shop settings
-            setShopSettings({
-                name: currentShop.name || '',
-                address: currentShop.address || '',
-                phone: currentShop.phone || '',
-                email: currentShop.email || '',
-                currency: currentShop.currency || 'KES',
-                timezone: currentShop.timezone || 'Africa/Nairobi'
-            })
-
-            // Tax settings from backend (with defaults)
-            const backendTaxSettings = currentShop.tax_settings || {}
-            setTaxSettings({
-                ...defaultTaxSettings,
-                ...backendTaxSettings
-            })
-
-            // Receipt settings from backend (with defaults)
-            const backendReceiptSettings = currentShop.receipt_settings || {}
-            setReceiptSettings({
-                ...defaultReceiptSettings,
-                ...backendReceiptSettings
-            })
-
-            // Sync to localStorage for Sales page
-            syncToLocalStorage(
-                { ...defaultTaxSettings, ...backendTaxSettings },
-                { ...defaultReceiptSettings, ...backendReceiptSettings }
-            )
-
-            setLoading(false)
-        }
+        if (!currentShop) return
+        setShopSettings({
+            name: currentShop.name || '',
+            address: currentShop.address || '',
+            phone: currentShop.phone || '',
+            email: currentShop.email || '',
+            currency: currentShop.currency || 'KES',
+            timezone: currentShop.timezone || 'Africa/Nairobi'
+        })
+        setTaxSettings({ ...defaultTaxSettings, ...(currentShop.tax_settings || {}) })
+        setReceiptSettings({ ...defaultReceiptSettings, ...(currentShop.receipt_settings || {}) })
+        syncToLocalStorage(
+            { ...defaultTaxSettings, ...(currentShop.tax_settings || {}) },
+            { ...defaultReceiptSettings, ...(currentShop.receipt_settings || {}) }
+        )
+        setLoading(false)
     }, [currentShop])
 
-    // Sync settings to localStorage for other pages (Sales, etc.)
     const syncToLocalStorage = (tax, receipt) => {
         localStorage.setItem('pos_taxSettings', JSON.stringify(tax))
         localStorage.setItem('pos_taxRate', tax.rate.toString())
@@ -104,610 +97,368 @@ function Settings() {
         localStorage.setItem('pos_receiptSettings', JSON.stringify(receipt))
     }
 
-    // Helper to extract error message from DRF response
     const getErrorMessage = (error) => {
-        if (!error.response?.data) {
-            return 'Network error. Please try again.'
-        }
-
+        if (!error.response?.data) return 'Network error. Please try again.'
         const data = error.response.data
-
-        // Handle string error message
-        if (typeof data === 'string') {
-            return data
-        }
-
-        // Handle { detail: "message" } format
-        if (data.detail) {
-            return data.detail
-        }
-
-        // Handle { field: ["error1", "error2"] } format from DRF validation
+        if (typeof data === 'string') return data
+        if (data.detail) return data.detail
         const fieldErrors = Object.entries(data)
-            .map(([field, errors]) => {
-                const errorMsg = Array.isArray(errors) ? errors[0] : errors
-                return `${field}: ${errorMsg}`
-            })
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors[0] : errors}`)
             .join(', ')
-
         return fieldErrors || 'Failed to save settings'
     }
 
-    // Save all settings to backend
-    const saveSettings = async (settingsType) => {
-        if (!currentShop?.id) {
-            toast.error('No shop selected')
-            return
-        }
+    const markDirty = () => { setDirty(true); setSaved(false) }
+    const setShopField = (key, value) => { setShopSettings((prev) => ({ ...prev, [key]: value })); markDirty() }
+    const setTaxField = (key, value) => { setTaxSettings((prev) => ({ ...prev, [key]: value })); markDirty() }
+    const setReceiptField = (key, value) => { setReceiptSettings((prev) => ({ ...prev, [key]: value })); markDirty() }
 
+    const discard = () => {
+        setShopSettings({
+            name: currentShop.name || '', address: currentShop.address || '', phone: currentShop.phone || '',
+            email: currentShop.email || '', currency: currentShop.currency || 'KES', timezone: currentShop.timezone || 'Africa/Nairobi'
+        })
+        setTaxSettings({ ...defaultTaxSettings, ...(currentShop.tax_settings || {}) })
+        setReceiptSettings({ ...defaultReceiptSettings, ...(currentShop.receipt_settings || {}) })
+        setDirty(false)
+    }
+
+    const save = async () => {
+        if (!currentShop?.id) { toast.error('No shop selected'); return }
         setSaving(true)
         try {
-            const updateData = {}
-
-            if (settingsType === 'shop' || settingsType === 'all') {
-                updateData.name = shopSettings.name
-                updateData.address = shopSettings.address || ''
-                updateData.phone = shopSettings.phone || ''
-                // Only include email if it's not empty (EmailField validates format)
-                if (shopSettings.email && shopSettings.email.trim()) {
-                    updateData.email = shopSettings.email.trim()
-                } else {
-                    updateData.email = ''
-                }
-                updateData.currency = shopSettings.currency
-                updateData.timezone = shopSettings.timezone
+            const updateData = {
+                name: shopSettings.name,
+                address: shopSettings.address || '',
+                phone: shopSettings.phone || '',
+                email: shopSettings.email?.trim() || '',
+                currency: shopSettings.currency,
+                timezone: shopSettings.timezone,
+                tax_settings: taxSettings,
+                receipt_settings: receiptSettings,
             }
-
-            if (settingsType === 'tax' || settingsType === 'all') {
-                updateData.tax_settings = taxSettings
-            }
-
-            if (settingsType === 'receipt' || settingsType === 'all') {
-                updateData.receipt_settings = receiptSettings
-            }
-
-            console.log('Sending update data:', updateData)
             const response = await shopsAPI.update(currentShop.id, updateData)
-
-            // Update current shop in context and localStorage (preserves role)
             updateCurrentShop(response.data)
-
-            // Sync to localStorage for Sales page
-            if (settingsType === 'tax' || settingsType === 'all') {
-                syncToLocalStorage(taxSettings, receiptSettings)
-            }
-            if (settingsType === 'receipt' || settingsType === 'all') {
-                syncToLocalStorage(taxSettings, receiptSettings)
-            }
-
-            toast.success(`${settingsType.charAt(0).toUpperCase() + settingsType.slice(1)} settings saved`)
+            syncToLocalStorage(taxSettings, receiptSettings)
+            setDirty(false)
+            setSaved(true)
+            setTimeout(() => setSaved(false), 2200)
         } catch (error) {
-            console.error('Error saving settings:', error)
-            console.error('Error response:', error.response?.data)
             toast.error(getErrorMessage(error))
         } finally {
             setSaving(false)
         }
     }
 
-    // Shop Settings Component
-    const ShopSettings = () => (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-pos-border p-6">
-                <h2 className="text-lg font-semibold text-pos-text mb-6">Shop Information</h2>
+    const copyUrl = () => {
+        const url = `https://${currentShop?.slug}.${getRootDomain()}`
+        try { navigator.clipboard.writeText(url) } catch (_) { /* ignore */ }
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+    }
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Shop Name *
-                        </label>
-                        <input
-                            type="text"
-                            value={shopSettings.name}
-                            onChange={(e) => setShopSettings({ ...shopSettings, name: e.target.value })}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                            placeholder="My Shop"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Email
-                        </label>
-                        <input
-                            type="email"
-                            value={shopSettings.email}
-                            onChange={(e) => setShopSettings({ ...shopSettings, email: e.target.value })}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                            placeholder="shop@example.com"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Phone Number
-                        </label>
-                        <input
-                            type="tel"
-                            value={shopSettings.phone}
-                            onChange={(e) => setShopSettings({ ...shopSettings, phone: e.target.value })}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                            placeholder="+254 700 000 000"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Currency
-                        </label>
-                        <select
-                            value={shopSettings.currency}
-                            onChange={(e) => setShopSettings({ ...shopSettings, currency: e.target.value })}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                        >
-                            <option value="KES">KES - Kenyan Shilling</option>
-                            <option value="USD">USD - US Dollar</option>
-                            <option value="EUR">EUR - Euro</option>
-                            <option value="GBP">GBP - British Pound</option>
-                            <option value="TZS">TZS - Tanzanian Shilling</option>
-                            <option value="UGX">UGX - Ugandan Shilling</option>
-                            <option value="NGN">NGN - Nigerian Naira</option>
-                            <option value="ZAR">ZAR - South African Rand</option>
-                        </select>
-                    </div>
-
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Address
-                        </label>
-                        <textarea
-                            value={shopSettings.address}
-                            onChange={(e) => setShopSettings({ ...shopSettings, address: e.target.value })}
-                            rows={3}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                            placeholder="123 Main Street, Nairobi, Kenya"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Timezone
-                        </label>
-                        <select
-                            value={shopSettings.timezone}
-                            onChange={(e) => setShopSettings({ ...shopSettings, timezone: e.target.value })}
-                            className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                        >
-                            <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
-                            <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
-                            <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
-                            <option value="Africa/Cairo">Africa/Cairo (EET)</option>
-                            <option value="UTC">UTC</option>
-                            <option value="Europe/London">Europe/London (GMT/BST)</option>
-                            <option value="America/New_York">America/New_York (EST/EDT)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-pos-border flex justify-end">
-                    <button
-                        onClick={() => saveSettings('shop')}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-pos-primary text-white rounded-lg hover:bg-pos-primary-dark transition-colors disabled:opacity-50"
-                    >
-                        <FiSave size={18} />
-                        {saving ? 'Saving...' : 'Save Changes'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-
-    // Tax Settings Component
-    const TaxSettings = () => (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-pos-border p-6">
-                <h2 className="text-lg font-semibold text-pos-text mb-6">Tax Configuration</h2>
-
-                <div className="space-y-6">
-                    {/* Enable Tax Toggle */}
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div>
-                            <p className="font-medium text-pos-text">Enable Tax</p>
-                            <p className="text-sm text-gray-500">Apply tax to all sales transactions</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={taxSettings.enabled}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, enabled: e.target.checked })}
-                                className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pos-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pos-primary"></div>
-                        </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Tax Name
-                            </label>
-                            <input
-                                type="text"
-                                value={taxSettings.name}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, name: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                placeholder="VAT"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Tax Rate (%)
-                            </label>
-                            <input
-                                type="number"
-                                value={taxSettings.rate}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, rate: parseFloat(e.target.value) || 0 })}
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                placeholder="16"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Tax Registration Number
-                            </label>
-                            <input
-                                type="text"
-                                value={taxSettings.taxNumber}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, taxNumber: e.target.value })}
-                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                placeholder="P000000000X"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Your KRA PIN or tax ID (shown on receipts)</p>
-                        </div>
-                    </div>
-
-                    {/* Tax Options */}
-                    <div className="space-y-4">
-                        <h3 className="font-medium text-pos-text">Tax Options</h3>
-
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={taxSettings.includeInPrice}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, includeInPrice: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                            />
-                            <div>
-                                <p className="text-sm font-medium text-pos-text">Tax included in product prices</p>
-                                <p className="text-xs text-gray-500">Product prices already include tax (tax-inclusive pricing)</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={taxSettings.showOnReceipt}
-                                onChange={(e) => setTaxSettings({ ...taxSettings, showOnReceipt: e.target.checked })}
-                                className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                            />
-                            <div>
-                                <p className="text-sm font-medium text-pos-text">Show tax on receipt</p>
-                                <p className="text-xs text-gray-500">Display tax breakdown on printed receipts</p>
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-pos-border flex justify-end">
-                    <button
-                        onClick={() => saveSettings('tax')}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-pos-primary text-white rounded-lg hover:bg-pos-primary-dark transition-colors disabled:opacity-50"
-                    >
-                        <FiSave size={18} />
-                        {saving ? 'Saving...' : 'Save Tax Settings'}
-                    </button>
-                </div>
-            </div>
-
-            {/* Tax Preview */}
-            <div className="bg-white rounded-xl border border-pos-border p-6">
-                <h3 className="text-lg font-semibold text-pos-text mb-4">Preview</h3>
-                <div className="bg-gray-50 rounded-lg p-4 max-w-sm">
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-600">Subtotal</span>
-                            <span>KSh 1,000.00</span>
-                        </div>
-                        {taxSettings.enabled && (
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">{taxSettings.name} ({taxSettings.rate}%)</span>
-                                <span>KSh {(1000 * taxSettings.rate / 100).toFixed(2)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between font-semibold pt-2 border-t border-gray-200">
-                            <span>Total</span>
-                            <span>KSh {taxSettings.enabled ? (1000 + (1000 * taxSettings.rate / 100)).toFixed(2) : '1,000.00'}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
-
-    // Receipt Settings Component
-    const ReceiptSettings = () => (
-        <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-pos-border p-6">
-                <h2 className="text-lg font-semibold text-pos-text mb-6">Receipt Customization</h2>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Settings Form */}
-                    <div className="space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Header Text
-                            </label>
-                            <textarea
-                                value={receiptSettings.headerText}
-                                onChange={(e) => setReceiptSettings({ ...receiptSettings, headerText: e.target.value })}
-                                rows={2}
-                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                placeholder="Welcome to our store!"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Displayed at the top of receipts</p>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Footer Text
-                            </label>
-                            <textarea
-                                value={receiptSettings.footerText}
-                                onChange={(e) => setReceiptSettings({ ...receiptSettings, footerText: e.target.value })}
-                                rows={2}
-                                className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                placeholder="Thank you for your business!"
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Displayed at the bottom of receipts</p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Paper Size
-                                </label>
-                                <select
-                                    value={receiptSettings.paperSize}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, paperSize: e.target.value })}
-                                    className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                                >
-                                    <option value="58mm">58mm (2.25")</option>
-                                    <option value="80mm">80mm (3.15")</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Font Size
-                                </label>
-                                <select
-                                    value={receiptSettings.fontSize}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, fontSize: e.target.value })}
-                                    className="w-full px-4 py-2.5 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary bg-white"
-                                >
-                                    <option value="small">Small</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="large">Large</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Receipt Options */}
-                        <div className="space-y-3">
-                            <h3 className="font-medium text-pos-text">Display Options</h3>
-
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={receiptSettings.showLogo}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, showLogo: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                                />
-                                <span className="text-sm text-pos-text">Show shop logo</span>
-                            </label>
-
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={receiptSettings.showTaxBreakdown}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, showTaxBreakdown: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                                />
-                                <span className="text-sm text-pos-text">Show tax breakdown</span>
-                            </label>
-
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={receiptSettings.showCashierName}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, showCashierName: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                                />
-                                <span className="text-sm text-pos-text">Show cashier name</span>
-                            </label>
-
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={receiptSettings.showDateTime}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, showDateTime: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                                />
-                                <span className="text-sm text-pos-text">Show date and time</span>
-                            </label>
-
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={receiptSettings.showTransactionId}
-                                    onChange={(e) => setReceiptSettings({ ...receiptSettings, showTransactionId: e.target.checked })}
-                                    className="w-4 h-4 rounded border-gray-300 accent-[#211A20] focus:ring-pos-primary/20"
-                                />
-                                <span className="text-sm text-pos-text">Show transaction ID</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    {/* Receipt Preview */}
-                    <div>
-                        <h3 className="font-medium text-pos-text mb-4">Receipt Preview</h3>
-                        <div className={`bg-white border-2 border-dashed border-gray-300 rounded-lg p-4 ${receiptSettings.paperSize === '58mm' ? 'max-w-[220px]' : 'max-w-[300px]'} mx-auto`}>
-                            <div className={`font-mono ${receiptSettings.fontSize === 'small' ? 'text-xs' : receiptSettings.fontSize === 'large' ? 'text-base' : 'text-sm'}`}>
-                                {/* Header */}
-                                <div className="text-center border-b border-dashed border-gray-300 pb-3 mb-3">
-                                    <p className="font-bold">{shopSettings.name || 'Shop Name'}</p>
-                                    {shopSettings.address && <p className="text-gray-600 text-xs">{shopSettings.address}</p>}
-                                    {shopSettings.phone && <p className="text-gray-600 text-xs">Tel: {shopSettings.phone}</p>}
-                                    {receiptSettings.headerText && (
-                                        <p className="text-gray-600 text-xs mt-1">{receiptSettings.headerText}</p>
-                                    )}
-                                </div>
-
-                                {/* Transaction Info */}
-                                <div className="text-xs text-gray-600 mb-3">
-                                    {receiptSettings.showTransactionId && <p>Receipt #: TXN-001234</p>}
-                                    {receiptSettings.showDateTime && <p>Date: {new Date().toLocaleDateString()}</p>}
-                                    {receiptSettings.showCashierName && <p>Cashier: John Doe</p>}
-                                </div>
-
-                                {/* Items */}
-                                <div className="border-t border-dashed border-gray-300 py-3">
-                                    <div className="flex justify-between mb-1">
-                                        <span>Product A x2</span>
-                                        <span>500.00</span>
-                                    </div>
-                                    <div className="flex justify-between mb-1">
-                                        <span>Product B x1</span>
-                                        <span>500.00</span>
-                                    </div>
-                                </div>
-
-                                {/* Totals */}
-                                <div className="border-t border-dashed border-gray-300 pt-2">
-                                    <div className="flex justify-between text-xs">
-                                        <span>Subtotal:</span>
-                                        <span>1,000.00</span>
-                                    </div>
-                                    {receiptSettings.showTaxBreakdown && taxSettings.enabled && (
-                                        <div className="flex justify-between text-xs">
-                                            <span>{taxSettings.name} ({taxSettings.rate}%):</span>
-                                            <span>{(1000 * taxSettings.rate / 100).toFixed(2)}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between font-bold mt-1">
-                                        <span>TOTAL:</span>
-                                        <span>KSh {(1000 + (taxSettings.enabled ? 1000 * taxSettings.rate / 100 : 0)).toFixed(2)}</span>
-                                    </div>
-                                </div>
-
-                                {/* Footer */}
-                                {receiptSettings.footerText && (
-                                    <div className="text-center border-t border-dashed border-gray-300 mt-3 pt-3">
-                                        <p className="text-xs text-gray-600">{receiptSettings.footerText}</p>
-                                    </div>
-                                )}
-
-                                {taxSettings.taxNumber && (
-                                    <p className="text-xs text-gray-500 text-center mt-2">PIN: {taxSettings.taxNumber}</p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-pos-border flex justify-end">
-                    <button
-                        onClick={() => saveSettings('receipt')}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-pos-primary text-white rounded-lg hover:bg-pos-primary-dark transition-colors disabled:opacity-50"
-                    >
-                        <FiSave size={18} />
-                        {saving ? 'Saving...' : 'Save Receipt Settings'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
+    const rate = parseFloat(taxSettings.rate) || 0
+    let sub = 1000, taxAmt = 0, total = 1000
+    if (taxSettings.enabled) {
+        if (taxSettings.includeInPrice) { sub = 1000 / (1 + rate / 100); taxAmt = 1000 - sub }
+        else { taxAmt = 1000 * rate / 100; total = 1000 + taxAmt }
+    }
+    const ksh = (n) => 'KSh ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const initials = (currentShop?.name || '?').slice(0, 2).toUpperCase()
 
     if (loading && !currentShop) {
         return (
-            <div className="flex min-h-screen bg-pos-bg">
+            <div className="flex min-h-screen bg-brand-surface">
                 <Sidebar />
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pos-primary"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-ink"></div>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-brand-surface font-sans text-brand-ink">
             <ToastNotification />
             <Sidebar />
 
-            <div className="flex-1 flex flex-col min-w-0">
-                {/* Header */}
-                <header className="bg-white px-6 py-4 border-b border-pos-border">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <FiSettings className="w-6 h-6 text-pos-primary" />
-                            <h1 className="text-2xl font-bold text-pos-text">Settings</h1>
+            <div className="flex-1 min-w-0 pb-24">
+                <header className="sticky top-0 z-20 bg-brand-surface/[0.9] backdrop-blur-md border-b border-brand-ink/[0.09]">
+                    <div className="flex items-center gap-4 px-8 py-4">
+                        <div className="flex-1 min-w-0">
+                            <h1 className="text-[22px] font-semibold tracking-[-0.03em]">Settings</h1>
+                            <div className="text-[13px] text-brand-ink/55 mt-0.5">
+                                Workspace <span className="font-mono">{currentShop?.slug}.{getRootDomain()}</span>
+                            </div>
                         </div>
-                        <ProfileDropdown />
+                        <span className="w-[38px] h-[38px] rounded-full bg-brand-ink text-brand-surface grid place-items-center text-[13px] font-semibold">{initials}</span>
                     </div>
                 </header>
 
-                {/* Main Content */}
-                <main className="flex-1 overflow-y-auto p-6">
-                    {/* Tabs */}
-                    <div className="mb-6 border-b border-gray-200">
-                        <nav className="flex gap-1 overflow-x-auto">
-                            {tabs.map((tab) => {
-                                const Icon = tab.icon
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium transition-colors whitespace-nowrap ${
-                                            activeTab === tab.id
-                                                ? 'border-pos-primary text-pos-primary'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                        }`}
-                                    >
-                                        <Icon className="w-5 h-5" />
-                                        {tab.label}
-                                    </button>
-                                )
-                            })}
-                        </nav>
-                    </div>
+                <div className="px-8 py-6 flex flex-wrap gap-7 items-start">
+                    <nav className="grid gap-0.5 flex-1 min-w-[200px] max-w-[240px]">
+                        {TABS.map((t) => (
+                            <button
+                                key={t.id}
+                                onClick={() => setTab(t.id)}
+                                className={`flex items-start gap-3 text-left w-full border-0 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${tab === t.id ? 'bg-white shadow-sm' : 'bg-transparent hover:bg-white/60'}`}
+                            >
+                                <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-none" style={{ background: tab === t.id ? '#ed8674' : 'transparent' }} />
+                                <span>
+                                    <span className="block text-sm font-semibold">{t.label}</span>
+                                    <span className="block text-xs text-brand-ink/55 mt-0.5">{t.sub}</span>
+                                </span>
+                            </button>
+                        ))}
+                    </nav>
 
-                    {/* Tab Content */}
-                    <div className="max-w-5xl w-full">
-                        {activeTab === 'profile' && <ProfileSettings />}
-                        {activeTab === 'staff' && <StaffManagement />}
-                        {activeTab === 'shop' && <ShopSettings />}
-                        {activeTab === 'tax' && <TaxSettings />}
-                        {activeTab === 'receipt' && <ReceiptSettings />}
+                    <div className="min-w-0 flex-[999_1_480px] max-w-[880px] grid gap-4">
+
+                        {tab === 'shop' && (
+                            <div className="grid gap-4">
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <h2 className="text-base font-semibold">Business details</h2>
+                                    <p className="text-[13px] text-brand-ink/58 mt-1 mb-[22px]">Shown on receipts and to staff when they sign in.</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-[18px]">
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="s-name" className={labelClass}>Shop name</label>
+                                            <input id="s-name" type="text" value={shopSettings.name} onChange={(e) => setShopField('name', e.target.value)} className={inputClass} />
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <span className={labelClass}>Workspace address</span>
+                                            <div className="h-11 flex items-center gap-2 bg-brand-surface rounded-[11px] pl-3.5 pr-1.5">
+                                                <span className="flex-1 min-w-0 font-mono text-[13px] truncate">{currentShop?.slug}.{getRootDomain()}</span>
+                                                <button onClick={copyUrl} className="h-8 px-3 bg-white border-0 rounded-lg text-xs font-semibold cursor-pointer">{copied ? 'Copied' : 'Copy'}</button>
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="s-email" className={labelClass}>Business email</label>
+                                            <input id="s-email" type="email" value={shopSettings.email} onChange={(e) => setShopField('email', e.target.value)} placeholder="shop@example.co.ke" className={inputClass} />
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="s-phone" className={labelClass}>Phone</label>
+                                            <input id="s-phone" type="tel" value={shopSettings.phone} onChange={(e) => setShopField('phone', e.target.value)} placeholder="+254 700 000 000" className={inputClass} />
+                                        </div>
+                                        <div className="grid gap-[7px] sm:col-span-2">
+                                            <label htmlFor="s-addr" className={labelClass}>Address</label>
+                                            <textarea id="s-addr" rows={2} value={shopSettings.address} onChange={(e) => setShopField('address', e.target.value)} placeholder="Street, town" className="bg-white border border-brand-ink/[0.16] rounded-[11px] px-3.5 py-3 text-[14.5px] outline-none focus:border-brand-ink transition-colors resize-y" />
+                                        </div>
+                                    </div>
+                                </section>
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <h2 className="text-base font-semibold mb-[18px]">Region</h2>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-[18px]">
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="s-cur" className={labelClass}>Currency</label>
+                                            <select id="s-cur" value={shopSettings.currency} onChange={(e) => setShopField('currency', e.target.value)} className={inputClass}>
+                                                <option value="KES">KES (Kenyan shilling)</option>
+                                                <option value="USD">USD (US dollar)</option>
+                                                <option value="EUR">EUR (Euro)</option>
+                                                <option value="GBP">GBP (British pound)</option>
+                                                <option value="TZS">TZS (Tanzanian shilling)</option>
+                                                <option value="UGX">UGX (Ugandan shilling)</option>
+                                                <option value="NGN">NGN (Nigerian naira)</option>
+                                                <option value="ZAR">ZAR (South African rand)</option>
+                                            </select>
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="s-tz" className={labelClass}>Timezone</label>
+                                            <select id="s-tz" value={shopSettings.timezone} onChange={(e) => setShopField('timezone', e.target.value)} className={inputClass}>
+                                                <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
+                                                <option value="Africa/Lagos">Africa/Lagos (WAT)</option>
+                                                <option value="Africa/Johannesburg">Africa/Johannesburg (SAST)</option>
+                                                <option value="Africa/Cairo">Africa/Cairo (EET)</option>
+                                                <option value="UTC">UTC</option>
+                                                <option value="Europe/London">Europe/London (GMT/BST)</option>
+                                                <option value="America/New_York">America/New_York (EST/EDT)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        )}
+
+                        {tab === 'profile' && (
+                            <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                <ProfileSettings />
+                            </div>
+                        )}
+
+                        {tab === 'staff' && (
+                            <div className="bg-white border border-brand-ink/[0.09] rounded-2xl overflow-hidden">
+                                <StaffManagement />
+                            </div>
+                        )}
+
+                        {tab === 'tax' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6 grid gap-5">
+                                    <div className="flex items-center gap-4 p-4 bg-brand-surface rounded-xl">
+                                        <div className="flex-1">
+                                            <div className="text-[14.5px] font-semibold">Charge tax on sales</div>
+                                            <div className="text-[12.5px] text-brand-ink/58 mt-0.5">Applied to every item unless marked exempt in Inventory.</div>
+                                        </div>
+                                        <Toggle on={taxSettings.enabled} onClick={() => setTaxField('enabled', !taxSettings.enabled)} ariaLabel="Charge tax" />
+                                    </div>
+                                    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-[18px] ${taxSettings.enabled ? '' : 'opacity-45'}`}>
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="t-name" className={labelClass}>Tax name</label>
+                                            <input id="t-name" type="text" value={taxSettings.name} onChange={(e) => setTaxField('name', e.target.value)} className={inputClass} />
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <label htmlFor="t-rate" className={labelClass}>Rate</label>
+                                            <div className="h-11 flex items-center bg-white border border-brand-ink/[0.16] rounded-[11px] px-3.5 focus-within:border-brand-ink transition-colors">
+                                                <input id="t-rate" type="number" min="0" max="100" step="0.1" value={taxSettings.rate} onChange={(e) => setTaxField('rate', parseFloat(e.target.value) || 0)} className="flex-1 min-w-0 border-0 outline-none bg-transparent text-[14.5px]" />
+                                                <span className="text-brand-ink/50">%</span>
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-[7px] sm:col-span-2">
+                                            <label htmlFor="t-pin" className={labelClass}>KRA PIN</label>
+                                            <input id="t-pin" type="text" value={taxSettings.taxNumber} onChange={(e) => setTaxField('taxNumber', e.target.value)} placeholder="P000000000X" className={`${inputClass} font-mono`} />
+                                            <span className="text-xs text-brand-ink/55">Printed on every receipt.</span>
+                                        </div>
+                                    </div>
+                                    <div className={`grid gap-2.5 ${taxSettings.enabled ? '' : 'opacity-45'}`}>
+                                        <span className={labelClass}>Product prices</span>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                            {[
+                                                { key: true, label: 'Include tax', sub: 'Shelf price is what the customer pays.' },
+                                                { key: false, label: 'Add tax at checkout', sub: 'Tax is added on top of the shelf price.' },
+                                            ].map((m) => (
+                                                <button
+                                                    key={String(m.key)}
+                                                    onClick={() => setTaxField('includeInPrice', m.key)}
+                                                    className="text-left bg-white rounded-xl p-3.5 cursor-pointer"
+                                                    style={{ border: `1.5px solid ${taxSettings.includeInPrice === m.key ? '#14373b' : 'rgba(20,55,59,0.14)'}` }}
+                                                >
+                                                    <span className="flex items-center gap-2 text-sm font-semibold">
+                                                        <span className="w-4 h-4 rounded-full border-2 grid place-items-center" style={{ borderColor: taxSettings.includeInPrice === m.key ? '#14373b' : 'rgba(20,55,59,0.14)' }}>
+                                                            {taxSettings.includeInPrice === m.key && <span className="w-1.5 h-1.5 rounded-full bg-brand-ink" />}
+                                                        </span>
+                                                        {m.label}
+                                                    </span>
+                                                    <span className="block text-xs text-brand-ink/58 mt-1.5 pl-6">{m.sub}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className={`flex items-center gap-4 border-t border-brand-ink/[0.07] pt-[18px] ${taxSettings.enabled ? '' : 'opacity-45'}`}>
+                                        <div className="flex-1">
+                                            <div className="text-sm font-semibold">Show tax breakdown on receipts</div>
+                                            <div className="text-xs text-brand-ink/58 mt-0.5">Required for VAT-registered businesses.</div>
+                                        </div>
+                                        <Toggle on={taxSettings.showOnReceipt} onClick={() => setTaxField('showOnReceipt', !taxSettings.showOnReceipt)} ariaLabel="Show tax on receipts" />
+                                    </div>
+                                </section>
+                                <aside className="bg-brand-ink text-brand-surface rounded-2xl p-5 sticky top-24">
+                                    <div className="text-xs font-semibold tracking-[0.06em] uppercase text-brand-surface/55">Preview · KSh 1,000 item</div>
+                                    <div className="grid gap-2.5 mt-4 text-[13.5px]">
+                                        <div className="flex justify-between"><span className="text-brand-surface/70">Subtotal</span><span className="font-mono">{ksh(sub)}</span></div>
+                                        <div className="flex justify-between">
+                                            <span className="text-brand-surface/70">{taxSettings.enabled ? `${taxSettings.name} ${rate}%${taxSettings.includeInPrice ? ' (incl.)' : ''}` : 'Tax off'}</span>
+                                            <span className="font-mono">{ksh(taxAmt)}</span>
+                                        </div>
+                                        <div className="h-px bg-brand-surface/15" />
+                                        <div className="flex justify-between items-baseline"><span className="font-semibold">Customer pays</span><span className="text-2xl font-semibold tracking-[-0.03em] text-brand-accent">{ksh(total)}</span></div>
+                                    </div>
+                                </aside>
+                            </div>
+                        )}
+
+                        {tab === 'receipt' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6 grid gap-[18px]">
+                                    <div className="grid gap-[7px]">
+                                        <label htmlFor="r-head" className={labelClass}>Header message</label>
+                                        <input id="r-head" type="text" value={receiptSettings.headerText} onChange={(e) => setReceiptField('headerText', e.target.value)} placeholder="Karibu! Welcome to our shop" className={inputClass} />
+                                    </div>
+                                    <div className="grid gap-[7px]">
+                                        <label htmlFor="r-foot" className={labelClass}>Footer message</label>
+                                        <input id="r-foot" type="text" value={receiptSettings.footerText} onChange={(e) => setReceiptField('footerText', e.target.value)} placeholder="Asante kwa kununua" className={inputClass} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-[18px]">
+                                        <div className="grid gap-[7px]">
+                                            <span className={labelClass}>Paper width</span>
+                                            <div className="flex gap-[3px] p-[3px] bg-brand-surface rounded-[11px]">
+                                                {[['58mm', '58 mm'], ['80mm', '80 mm']].map(([val, label]) => (
+                                                    <button key={val} onClick={() => setReceiptField('paperSize', val)} className={`flex-1 border-0 text-[13px] font-semibold py-2.5 rounded-lg cursor-pointer ${receiptSettings.paperSize === val ? 'bg-white shadow-sm' : 'bg-transparent'}`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-[7px]">
+                                            <span className={labelClass}>Text size</span>
+                                            <div className="flex gap-[3px] p-[3px] bg-brand-surface rounded-[11px]">
+                                                {[['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']].map(([val, label]) => (
+                                                    <button key={val} onClick={() => setReceiptField('fontSize', val)} className={`flex-1 border-0 text-[13px] font-semibold py-2.5 rounded-lg cursor-pointer ${receiptSettings.fontSize === val ? 'bg-white shadow-sm' : 'bg-transparent'}`}>{label}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="grid border-t border-brand-ink/[0.07] pt-1.5">
+                                        {[
+                                            ['showLogo', 'Shop logo'], ['showTaxBreakdown', 'Tax breakdown'], ['showCashierName', 'Cashier name'],
+                                            ['showDateTime', 'Date and time'], ['showTransactionId', 'Receipt number'],
+                                        ].map(([key, label]) => (
+                                            <div key={key} className="flex items-center gap-4 py-[11px] border-b border-brand-ink/[0.06] last:border-b-0">
+                                                <span className="flex-1 text-sm">{label}</span>
+                                                <Toggle on={receiptSettings[key]} onClick={() => setReceiptField(key, !receiptSettings[key])} ariaLabel={label} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <aside className="sticky top-24 bg-brand-ink rounded-2xl p-5 grid justify-items-center gap-3">
+                                    <span className="text-xs font-semibold tracking-[0.06em] uppercase text-brand-surface/55">Live preview</span>
+                                    <div
+                                        className="bg-white text-brand-ink font-mono leading-[1.55] shadow-lg"
+                                        style={{ width: receiptSettings.paperSize === '58mm' ? '200px' : '260px', padding: '18px 14px 22px', fontSize: receiptSettings.fontSize === 'small' ? '10.5px' : receiptSettings.fontSize === 'large' ? '13px' : '11.5px' }}
+                                    >
+                                        <div className="text-center">
+                                            {receiptSettings.showLogo && <div className="w-[34px] h-[34px] mx-auto mb-2 rounded-[9px] bg-brand-ink text-brand-surface grid place-items-center font-bold text-[11px]">{initials}</div>}
+                                            <div className="font-bold" style={{ fontSize: '1.15em' }}>{shopSettings.name || 'Shop name'}</div>
+                                            {receiptSettings.headerText && <div className="opacity-70">{receiptSettings.headerText}</div>}
+                                        </div>
+                                        <div className="border-t border-dashed border-brand-ink/35 my-2.5" />
+                                        {receiptSettings.showTransactionId && <div>Receipt TXN-1C3B426E</div>}
+                                        {receiptSettings.showDateTime && <div>{new Date().toLocaleDateString('en-GB')} 14:32</div>}
+                                        {receiptSettings.showCashierName && <div>Served by John M.</div>}
+                                        <div className="border-t border-dashed border-brand-ink/35 my-2.5" />
+                                        <div className="flex justify-between"><span>Unga 2kg x2</span><span>400</span></div>
+                                        <div className="flex justify-between"><span>Maziwa 500ml x4</span><span>260</span></div>
+                                        <div className="flex justify-between"><span>Supa Loaf x1</span><span>65</span></div>
+                                        <div className="border-t border-dashed border-brand-ink/35 my-2.5" />
+                                        {receiptSettings.showTaxBreakdown && taxSettings.enabled && (
+                                            <div className="flex justify-between opacity-75"><span>{taxSettings.name} {taxSettings.rate}% incl.</span><span>100</span></div>
+                                        )}
+                                        <div className="flex justify-between font-bold" style={{ fontSize: '1.1em' }}><span>TOTAL</span><span>KSh 725</span></div>
+                                        <div className="flex justify-between opacity-75"><span>M-Pesa</span><span>QK81H2XR</span></div>
+                                        {taxSettings.taxNumber && taxSettings.showOnReceipt && <div className="opacity-75 mt-1.5">PIN {taxSettings.taxNumber}</div>}
+                                        <div className="border-t border-dashed border-brand-ink/35 my-2.5" />
+                                        <div className="text-center">{receiptSettings.footerText}</div>
+                                    </div>
+                                </aside>
+                            </div>
+                        )}
+
                     </div>
-                </main>
+                </div>
+
+                {dirty && (
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 lg:left-[calc(50%+124px)] z-50 flex items-center gap-4 bg-brand-ink text-brand-surface rounded-2xl pl-[18px] pr-2.5 py-2.5 shadow-2xl">
+                        <span className="w-2 h-2 rounded-full bg-brand-accent flex-none" />
+                        <span className="text-sm font-medium whitespace-nowrap">You have unsaved changes</span>
+                        <button onClick={discard} className="h-[38px] px-3.5 bg-transparent text-brand-surface border border-brand-surface/25 rounded-[10px] text-[13.5px] font-semibold cursor-pointer">Discard</button>
+                        <button onClick={save} disabled={saving} className="h-[38px] px-4 bg-brand-accent text-brand-ink border-0 rounded-[10px] text-[13.5px] font-bold cursor-pointer disabled:opacity-60">
+                            {saving ? 'Saving…' : 'Save changes'}
+                        </button>
+                    </div>
+                )}
+                {saved && (
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 lg:left-[calc(50%+124px)] z-50 flex items-center gap-2.5 bg-white border border-brand-ink/[0.12] rounded-2xl px-[18px] py-3 shadow-xl text-sm font-semibold">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#14373b" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>
+                        Settings saved
+                    </div>
+                )}
             </div>
         </div>
     )

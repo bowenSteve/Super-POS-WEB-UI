@@ -2,11 +2,10 @@ import { useState, useEffect } from "react"
 import { useAuth } from "../context/AuthContext"
 import { customersAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
-import ProfileDropdown from "../components/ProfileDropdown"
 import ToastNotification, { toast } from '../components/ToastNotification'
 
 function Customers() {
-    const { currentShop } = useAuth()
+    const { user, currentShop } = useAuth()
     const [customers, setCustomers] = useState([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
@@ -66,7 +65,6 @@ function Customers() {
         e.preventDefault()
 
         try {
-            // Clean data - remove empty strings to avoid unique constraint issues
             const customerData = {
                 name: formData.name.trim(),
                 email: formData.email.trim() || undefined,
@@ -74,7 +72,6 @@ function Customers() {
                 address: formData.address.trim() || undefined,
                 is_active: formData.is_active
             }
-            // Remove undefined fields
             Object.keys(customerData).forEach(key =>
                 customerData[key] === undefined && delete customerData[key]
             )
@@ -100,7 +97,6 @@ function Customers() {
         e.preventDefault()
 
         try {
-            // Clean data - remove empty strings to avoid unique constraint issues
             const customerData = {
                 name: formData.name.trim(),
                 email: formData.email.trim() || undefined,
@@ -108,7 +104,6 @@ function Customers() {
                 address: formData.address.trim() || undefined,
                 is_active: formData.is_active
             }
-            // Remove undefined fields
             Object.keys(customerData).forEach(key =>
                 customerData[key] === undefined && delete customerData[key]
             )
@@ -160,109 +155,24 @@ function Customers() {
     }
 
     const formatDate = (dateString) => {
-        const date = new Date(dateString)
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        })
+        return new Date(dateString).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
     }
 
-    // SVG Icons
-    const SearchIcon = () => (
-        <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="M21 21l-4.35-4.35"></path>
-        </svg>
-    )
-
-    const PlusIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-    )
-
-    const EditIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-        </svg>
-    )
-
-    const EyeIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-            <circle cx="12" cy="12" r="3"></circle>
-        </svg>
-    )
-
-    const TrashIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-    )
-
-    const CloseIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-    )
-
-    const UserIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-        </svg>
-    )
-
-    const PhoneIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-        </svg>
-    )
-
-    const MailIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-        </svg>
-    )
-
-    const MapPinIcon = () => (
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-            <circle cx="12" cy="10" r="3"></circle>
-        </svg>
-    )
-
-    const DollarIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="1" x2="12" y2="23"></line>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-        </svg>
-    )
-
-    const ShoppingBagIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <path d="M16 10a4 4 0 0 1-8 0"></path>
-        </svg>
-    )
+    const abbr = (name) => (name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+    const initials = (user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase() + (user?.last_name?.[0] || '').toUpperCase()
+    const inputClass = 'w-full px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl outline-none focus:border-brand-ink transition-colors'
+    const labelClass = 'block text-sm font-semibold mb-1.5'
 
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-brand-surface font-sans text-brand-ink">
             <ToastNotification />
             <Sidebar />
-            <div className="flex-1 flex flex-col">
-                <header className="bg-white px-6 py-4 border-b border-pos-border flex items-center justify-between">
-                    <h1 className="text-xl font-semibold text-pos-text">Customer Management</h1>
-                    <div className="flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+                <header className="sticky top-0 z-20 bg-brand-surface/[0.9] backdrop-blur-md border-b border-brand-ink/[0.09]">
+                    <div className="flex items-center gap-4 px-8 py-4">
+                        <h1 className="text-[22px] font-semibold tracking-[-0.03em] flex-1">Customers</h1>
                         <button
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                             onClick={() => {
                                 if (!currentShop) {
                                     toast.error("Please select a shop from your profile to add customers")
@@ -271,155 +181,133 @@ function Customers() {
                                 setShowAddModal(true)
                             }}
                         >
-                            <PlusIcon />
-                            Add Customer
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add customer
                         </button>
-                        <ProfileDropdown />
+                        <span className="w-[38px] h-[38px] rounded-full bg-brand-ink text-brand-surface grid place-items-center text-[13px] font-semibold">{initials}</span>
                     </div>
                 </header>
 
-                <main className="flex-1 p-6">
+                <main className="px-8 py-6">
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
-                                <UserIcon />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Total Customers</p>
-                                <p className="text-xl font-semibold text-pos-text">{customers.length}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-px bg-brand-ink/[0.09] border border-brand-ink/[0.09] rounded-2xl overflow-hidden mb-5">
+                        <div className="bg-brand-ink text-brand-surface px-[22px] py-5">
+                            <div className="text-[12.5px] text-brand-surface/65">Total customers</div>
+                            <div className="text-2xl font-semibold tracking-[-0.035em] mt-1.5">{customers.length}</div>
+                        </div>
+                        <div className="bg-white px-[22px] py-5">
+                            <div className="text-[12.5px] text-brand-ink/60">Total revenue</div>
+                            <div className="text-2xl font-semibold tracking-[-0.035em] mt-1.5">
+                                KSh {customers.reduce((sum, c) => sum + parseFloat(c.total_purchases || 0), 0).toFixed(2)}
                             </div>
                         </div>
-
-                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
-                                <DollarIcon />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Total Revenue</p>
-                                <p className="text-xl font-semibold text-pos-text">
-                                    KSh {customers.reduce((sum, c) => sum + parseFloat(c.total_purchases || 0), 0).toFixed(2)}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl p-5 flex items-center gap-4">
-                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-600">
-                                <ShoppingBagIcon />
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500">Total Transactions</p>
-                                <p className="text-xl font-semibold text-pos-text">
-                                    {customers.reduce((sum, c) => sum + (c.total_transactions || 0), 0)}
-                                </p>
+                        <div className="bg-white px-[22px] py-5">
+                            <div className="text-[12.5px] text-brand-ink/60">Total transactions</div>
+                            <div className="text-2xl font-semibold tracking-[-0.035em] mt-1.5">
+                                {customers.reduce((sum, c) => sum + (c.total_transactions || 0), 0)}
                             </div>
                         </div>
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-white rounded-xl p-4 mb-6">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="relative flex-1 min-w-[200px]">
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                    <SearchIcon />
-                                </div>
-                                <input
-                                    type="text"
-                                    className="w-full pl-10 pr-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                    placeholder="Search by name, email, or phone..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                />
-                            </div>
+                    <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-3.5 flex flex-wrap items-center gap-3 mb-5">
+                        <label className="flex-1 min-w-[220px] flex items-center gap-2.5 bg-brand-surface rounded-xl px-3 h-[42px] focus-within:ring-1 focus-within:ring-brand-ink transition-shadow">
+                            <svg className="w-4 h-4 opacity-50 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                            <input
+                                type="text"
+                                className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm"
+                                placeholder="Search by name, email, or phone…"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </label>
 
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="w-4 h-4 rounded border-pos-border accent-gray-600"
-                                    checked={showActiveOnly}
-                                    onChange={(e) => setShowActiveOnly(e.target.checked)}
-                                />
-                                <span className="text-sm text-gray-600">Active Only</span>
-                            </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded accent-brand-ink"
+                                checked={showActiveOnly}
+                                onChange={(e) => setShowActiveOnly(e.target.checked)}
+                            />
+                            Active only
+                        </label>
 
-                            <div className="text-sm text-gray-600">
-                                Total: <span className="font-semibold text-pos-text">{filteredCustomers.length}</span> customers
-                            </div>
+                        <div className="text-sm text-brand-ink/60">
+                            Total: <span className="font-semibold text-brand-ink">{filteredCustomers.length}</span> customers
                         </div>
                     </div>
 
                     {/* Customers Table */}
                     {loading ? (
-                        <div className="bg-white rounded-xl p-12 text-center text-gray-500">
-                            Loading customers...
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-12 text-center text-brand-ink/55">
+                            Loading customers…
                         </div>
                     ) : (
-                        <div className="bg-white rounded-xl overflow-hidden">
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl overflow-hidden">
                             <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 border-b border-pos-border">
+                                <table className="w-full text-[13.5px]">
+                                    <thead className="bg-[#fafcfb] border-b border-brand-ink/[0.08]">
                                         <tr>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Name</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Email</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Phone</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Total Purchases</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Transactions</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Status</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Joined</th>
-                                            <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Actions</th>
+                                            <th className="text-left px-[18px] py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Name</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Email</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Phone</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Total purchases</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Transactions</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Status</th>
+                                            <th className="text-left px-3 py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Joined</th>
+                                            <th className="text-left px-[18px] py-3 text-[11.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-pos-border">
+                                    <tbody className="divide-y divide-brand-ink/[0.06]">
                                         {filteredCustomers.length === 0 ? (
                                             <tr>
-                                                <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                                                <td colSpan="8" className="px-4 py-12 text-center text-brand-ink/55">
                                                     No customers found
                                                 </td>
                                             </tr>
                                         ) : (
                                             filteredCustomers.map(customer => (
-                                                <tr key={customer.id} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">{customer.name}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">{customer.email || '-'}</td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">{customer.phone || '-'}</td>
-                                                    <td className="px-4 py-3 text-sm font-medium text-pos-text">
+                                                <tr key={customer.id} className="hover:bg-brand-surface/60 transition-colors">
+                                                    <td className="px-[18px] py-3 font-semibold">{customer.name}</td>
+                                                    <td className="px-3 py-3 text-brand-ink/65">{customer.email || '-'}</td>
+                                                    <td className="px-3 py-3 text-brand-ink/65">{customer.phone || '-'}</td>
+                                                    <td className="px-3 py-3 font-mono font-medium">
                                                         KSh {parseFloat(customer.total_purchases || 0).toFixed(2)}
                                                     </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">{customer.total_transactions || 0}</td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                            customer.is_active
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-gray-100 text-gray-600'
-                                                        }`}>
+                                                    <td className="px-3 py-3 text-brand-ink/65">{customer.total_transactions || 0}</td>
+                                                    <td className="px-3 py-3">
+                                                        <span
+                                                            className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
+                                                            style={customer.is_active ? { background: 'rgba(47,122,95,0.12)', color: '#2f7a5f' } : { background: 'rgba(20,55,59,0.08)', color: 'rgba(20,55,59,0.6)' }}
+                                                        >
                                                             {customer.is_active ? 'Active' : 'Inactive'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-3 text-sm text-gray-600">
+                                                    <td className="px-3 py-3 text-brand-ink/65">
                                                         {formatDate(customer.created_at)}
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-[18px] py-3">
                                                         <div className="flex items-center gap-1">
                                                             <button
-                                                                className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                                                className="p-2 text-brand-ink/55 hover:text-brand-ink hover:bg-brand-surface rounded-lg transition-colors cursor-pointer"
                                                                 onClick={() => openViewModal(customer)}
-                                                                title="View Details"
+                                                                title="View details"
                                                             >
-                                                                <EyeIcon />
+                                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                                             </button>
                                                             <button
-                                                                className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                                                className="p-2 text-brand-ink/55 hover:text-brand-ink hover:bg-brand-surface rounded-lg transition-colors cursor-pointer"
                                                                 onClick={() => openEditModal(customer)}
-                                                                title="Edit Customer"
+                                                                title="Edit customer"
                                                             >
-                                                                <EditIcon />
+                                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                                             </button>
                                                             <button
-                                                                className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                className="p-2 text-brand-ink/55 hover:text-[#c8553d] hover:bg-[#c8553d]/5 rounded-lg transition-colors cursor-pointer"
                                                                 onClick={() => openDeleteModal(customer)}
-                                                                title="Delete Customer"
+                                                                title="Delete customer"
                                                             >
-                                                                <TrashIcon />
+                                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                                             </button>
                                                         </div>
                                                     </td>
@@ -435,79 +323,43 @@ function Customers() {
 
                 {/* Add Customer Modal */}
                 {showAddModal && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Add New Customer</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowAddModal(false)}>
-                                    <CloseIcon />
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowAddModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Add new customer</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowAddModal(false)}>
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddCustomer} className="p-6 space-y-4">
+                            <form onSubmit={handleAddCustomer} className="p-6 grid gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleInputChange}
-                                        required
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        placeholder="Enter customer name"
-                                    />
+                                    <label className={labelClass}>Customer name *</label>
+                                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} placeholder="Enter customer name" />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                        <input
-                                            type="email"
-                                            name="email"
-                                            value={formData.email}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                            placeholder="email@example.com"
-                                        />
+                                        <label className={labelClass}>Email</label>
+                                        <input type="email" name="email" value={formData.email} onChange={handleInputChange} className={inputClass} placeholder="email@example.com" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                                        <input
-                                            type="tel"
-                                            name="phone"
-                                            value={formData.phone}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                            placeholder="e.g., +254 712 345 678"
-                                        />
+                                        <label className={labelClass}>Phone</label>
+                                        <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className={inputClass} placeholder="e.g., +254 712 345 678" />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                                    <textarea
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleInputChange}
-                                        rows="3"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                        placeholder="Enter customer address"
-                                    />
+                                    <label className={labelClass}>Address</label>
+                                    <textarea name="address" value={formData.address} onChange={handleInputChange} rows="3" className={`${inputClass} resize-none`} placeholder="Enter customer address" />
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowAddModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowAddModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
-                                        Add Customer
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
+                                        Add customer
                                     </button>
                                 </div>
                             </form>
@@ -517,87 +369,48 @@ function Customers() {
 
                 {/* Edit Customer Modal */}
                 {showEditModal && selectedCustomer && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Edit Customer</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowEditModal(false)}>
-                                    <CloseIcon />
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Edit customer</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowEditModal(false)}>
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
 
-                            <form onSubmit={handleEditCustomer} className="p-6 space-y-4">
+                            <form onSubmit={handleEditCustomer} className="p-6 grid gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleInputChange}
-                                        required
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                    />
+                                    <label className={labelClass}>Customer name *</label>
+                                    <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                        <input
-                                            type="email"
-                                            name="email"
-                                            value={formData.email}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Email</label>
+                                        <input type="email" name="email" value={formData.email} onChange={handleInputChange} className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                                        <input
-                                            type="tel"
-                                            name="phone"
-                                            value={formData.phone}
-                                            onChange={handleInputChange}
-                                            className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                                        />
+                                        <label className={labelClass}>Phone</label>
+                                        <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className={inputClass} />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                                    <textarea
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleInputChange}
-                                        rows="3"
-                                        className="w-full px-3 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary resize-none"
-                                    />
+                                    <label className={labelClass}>Address</label>
+                                    <textarea name="address" value={formData.address} onChange={handleInputChange} rows="3" className={`${inputClass} resize-none`} />
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="is_active"
-                                        name="is_active"
-                                        checked={formData.is_active}
-                                        onChange={handleInputChange}
-                                        className="w-4 h-4 rounded border-gray-300 accent-gray-600"
-                                    />
-                                    <label htmlFor="is_active" className="text-sm text-gray-700">Active Customer</label>
-                                </div>
+                                <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+                                    <input type="checkbox" id="is_active" name="is_active" checked={formData.is_active} onChange={handleInputChange} className="w-4 h-4 rounded accent-brand-ink" />
+                                    Active customer
+                                </label>
 
-                                <div className="flex justify-end gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
-                                        onClick={() => setShowEditModal(false)}
-                                    >
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button type="button" className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer" onClick={() => setShowEditModal(false)}>
                                         Cancel
                                     </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
-                                    >
-                                        Update Customer
+                                    <button type="submit" className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer">
+                                        Update customer
                                     </button>
                                 </div>
                             </form>
@@ -607,92 +420,91 @@ function Customers() {
 
                 {/* View Customer Modal */}
                 {showViewModal && selectedCustomer && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowViewModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Customer Details</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowViewModal(false)}>
-                                    <CloseIcon />
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowViewModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Customer details</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowViewModal(false)}>
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
 
                             <div className="p-6">
                                 {/* Customer Header */}
                                 <div className="flex items-center gap-4 mb-6">
-                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-gray-600">
-                                        <UserIcon />
+                                    <div className="w-16 h-16 rounded-full bg-brand-ink text-brand-surface flex items-center justify-center font-semibold text-lg">
+                                        {abbr(selectedCustomer.name)}
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-pos-text">{selectedCustomer.name}</h3>
-                                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                                            selectedCustomer.is_active
-                                                ? 'bg-green-100 text-green-700'
-                                                : 'bg-gray-100 text-gray-600'
-                                        }`}>
+                                        <h3 className="text-lg font-semibold">{selectedCustomer.name}</h3>
+                                        <span
+                                            className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold"
+                                            style={selectedCustomer.is_active ? { background: 'rgba(47,122,95,0.12)', color: '#2f7a5f' } : { background: 'rgba(20,55,59,0.08)', color: 'rgba(20,55,59,0.6)' }}
+                                        >
                                             {selectedCustomer.is_active ? 'Active' : 'Inactive'}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Contact Info */}
-                                <div className="space-y-3 mb-6">
+                                <div className="grid gap-3 mb-6">
                                     {selectedCustomer.email && (
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <MailIcon />
-                                            <span className="text-gray-600">{selectedCustomer.email}</span>
+                                        <div className="flex items-center gap-3 text-sm text-brand-ink/65">
+                                            <svg className="w-4 h-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                                            {selectedCustomer.email}
                                         </div>
                                     )}
                                     {selectedCustomer.phone && (
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <PhoneIcon />
-                                            <span className="text-gray-600">{selectedCustomer.phone}</span>
+                                        <div className="flex items-center gap-3 text-sm text-brand-ink/65">
+                                            <svg className="w-4 h-4 flex-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                            {selectedCustomer.phone}
                                         </div>
                                     )}
                                     {selectedCustomer.address && (
-                                        <div className="flex items-start gap-3 text-sm">
-                                            <MapPinIcon />
-                                            <span className="text-gray-600">{selectedCustomer.address}</span>
+                                        <div className="flex items-start gap-3 text-sm text-brand-ink/65">
+                                            <svg className="w-4 h-4 flex-none mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                            {selectedCustomer.address}
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Stats */}
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <p className="text-sm text-gray-500 mb-1">Total Purchases</p>
-                                        <p className="text-xl font-semibold text-pos-text">
+                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                    <div className="bg-brand-surface rounded-xl p-4">
+                                        <p className="text-xs text-brand-ink/55 mb-1">Total purchases</p>
+                                        <p className="text-xl font-semibold">
                                             KSh {parseFloat(selectedCustomer.total_purchases || 0).toFixed(2)}
                                         </p>
                                     </div>
-                                    <div className="bg-gray-50 rounded-lg p-4">
-                                        <p className="text-sm text-gray-500 mb-1">Transactions</p>
-                                        <p className="text-xl font-semibold text-pos-text">
+                                    <div className="bg-brand-surface rounded-xl p-4">
+                                        <p className="text-xs text-brand-ink/55 mb-1">Transactions</p>
+                                        <p className="text-xl font-semibold">
                                             {selectedCustomer.total_transactions || 0}
                                         </p>
                                     </div>
                                 </div>
 
                                 {/* Timestamps */}
-                                <div className="text-xs text-gray-500 space-y-1">
+                                <div className="text-xs text-brand-ink/55 grid gap-0.5">
                                     <p>Joined: {formatDate(selectedCustomer.created_at)}</p>
                                     <p>Last updated: {formatDate(selectedCustomer.updated_at)}</p>
                                 </div>
 
                                 <div className="flex justify-end gap-3 pt-6">
                                     <button
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                        className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer"
                                         onClick={() => setShowViewModal(false)}
                                     >
                                         Close
                                     </button>
                                     <button
-                                        className="px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors"
+                                        className="px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
                                         onClick={() => {
                                             setShowViewModal(false)
                                             openEditModal(selectedCustomer)
                                         }}
                                     >
-                                        Edit Customer
+                                        Edit customer
                                     </button>
                                 </div>
                             </div>
@@ -702,24 +514,24 @@ function Customers() {
 
                 {/* Delete Confirmation Modal */}
                 {showDeleteModal && selectedCustomer && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteModal(false)}>
-                        <div className="bg-white rounded-xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-pos-border">
-                                <h2 className="text-lg font-semibold text-pos-text">Delete Customer</h2>
-                                <button className="text-gray-400 hover:text-gray-600" onClick={() => setShowDeleteModal(false)}>
-                                    <CloseIcon />
+                    <div className="fixed inset-0 bg-[rgba(12,34,37,0.5)] backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDeleteModal(false)}>
+                        <div className="bg-white rounded-2xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-brand-ink/10">
+                                <h2 className="text-lg font-semibold">Delete customer</h2>
+                                <button className="text-brand-ink/40 hover:text-brand-ink cursor-pointer" onClick={() => setShowDeleteModal(false)}>
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
 
                             <div className="p-6">
-                                <p className="text-gray-600 mb-4">
-                                    Are you sure you want to delete <span className="font-semibold text-pos-text">{selectedCustomer.name}</span>?
+                                <p className="text-brand-ink/65 mb-4">
+                                    Are you sure you want to delete <span className="font-semibold text-brand-ink">{selectedCustomer.name}</span>?
                                     This action cannot be undone.
                                 </p>
 
                                 {selectedCustomer.total_transactions > 0 && (
-                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                                        <p className="text-sm text-yellow-800">
+                                    <div className="bg-[#d98b2b]/10 border border-[#d98b2b]/25 rounded-xl p-3 mb-4">
+                                        <p className="text-sm" style={{ color: '#9a6319' }}>
                                             This customer has {selectedCustomer.total_transactions} transaction(s).
                                             Consider deactivating instead of deleting.
                                         </p>
@@ -728,13 +540,13 @@ function Customers() {
 
                                 <div className="flex justify-end gap-3">
                                     <button
-                                        className="px-4 py-2 text-gray-600 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors"
+                                        className="px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-brand-surface transition-colors font-semibold cursor-pointer"
                                         onClick={() => setShowDeleteModal(false)}
                                     >
                                         Cancel
                                     </button>
                                     <button
-                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                        className="px-4 py-2.5 bg-[#c8553d] text-white rounded-xl hover:bg-[#c8553d]/90 transition-colors font-semibold cursor-pointer"
                                         onClick={handleDeleteCustomer}
                                     >
                                         Delete

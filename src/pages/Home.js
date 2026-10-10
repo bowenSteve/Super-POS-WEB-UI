@@ -1,645 +1,536 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import Sidebar from "../components/Sidebar"
-import ProfileDropdown from "../components/ProfileDropdown"
 import { useAuth } from "../context/AuthContext"
-import { salesAPI, productsAPI } from "../api/api"
+import { salesAPI, productsAPI, shopsAPI } from "../api/api"
 import DashboardShimmer from "../features/shimmers/DashboardShimmer"
+
+const RANGES = [
+    { key: 'today', label: 'Today' },
+    { key: 'yesterday', label: 'Yesterday' },
+    { key: '7d', label: '7 days' },
+    { key: '30d', label: '30 days' },
+]
+
+const COMPARISON_LABEL = { today: 'vs yesterday', yesterday: 'vs day before', '7d': 'vs last week', '30d': 'vs last month' }
+
+const asArray = (data) => Array.isArray(data) ? data : (data?.results || [])
+const k = (n) => Math.round(n || 0).toLocaleString('en-KE')
+const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+const toISODate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+function getRangeDates(range) {
+    const today = startOfDay(new Date())
+    if (range === 'today') return { from: today, to: today }
+    if (range === 'yesterday') {
+        const y = new Date(today); y.setDate(y.getDate() - 1)
+        return { from: y, to: y }
+    }
+    const days = range === '7d' ? 6 : 29
+    const from = new Date(today); from.setDate(from.getDate() - days)
+    return { from, to: today }
+}
+
+function getPreviousRangeDates(range) {
+    const { from, to } = getRangeDates(range)
+    const spanDays = Math.round((to - from) / 86400000) + 1
+    const prevTo = new Date(from); prevTo.setDate(prevTo.getDate() - 1)
+    const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - spanDays + 1)
+    return { from: prevFrom, to: prevTo }
+}
+
+function deltaPct(current, previous) {
+    if (!previous) return null
+    return ((current - previous) / previous) * 100
+}
+
+function formatDelta(pct) {
+    if (pct === null) return '—'
+    const arrow = pct >= 0 ? '↑' : '↓'
+    return `${arrow} ${Math.abs(pct).toFixed(1)}%`
+}
+
+function bucketize(transactions, from, to, hourly) {
+    if (hourly) {
+        const hours = Array.from({ length: 15 }, (_, i) => i + 7) // 07:00 - 21:00
+        return hours.map((h) => ({
+            label: String(h).padStart(2, '0'),
+            fullLabel: `${String(h).padStart(2, '0')}:00`,
+            value: transactions
+                .filter((t) => new Date(t.created_at).getHours() === h)
+                .reduce((s, t) => s + parseFloat(t.total || 0), 0),
+        }))
+    }
+    const days = []
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) days.push(new Date(d))
+    return days.map((day) => {
+        const key = toISODate(day)
+        return {
+            // Just the day number - "DD/MM" doesn't fit a 30-bar-wide slot.
+            label: String(day.getDate()),
+            fullLabel: day.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }),
+            value: transactions
+                .filter((t) => (t.created_at || '').slice(0, 10) === key)
+                .reduce((s, t) => s + parseFloat(t.total || 0), 0),
+        }
+    })
+}
+
+function sumQty(t) {
+    return (t.items || []).reduce((s, i) => s + (i.quantity || 0), 0)
+}
 
 function Home() {
     const navigate = useNavigate()
-    const { user } = useAuth()
+    const { user, currentShop } = useAuth()
+    const [range, setRange] = useState('today')
     const [transactions, setTransactions] = useState([])
+    const [prevTransactions, setPrevTransactions] = useState([])
     const [products, setProducts] = useState([])
-    const [lowStockCount, setLowStockCount] = useState(0)
+    const [members, setMembers] = useState([])
+    const [openShifts, setOpenShifts] = useState([])
+    const [recentClosedShifts, setRecentClosedShifts] = useState([])
     const [loading, setLoading] = useState(true)
-    const [error, setError] = useState("")
-    const [dateFrom, setDateFrom] = useState(new Date())
-    const [dateTo, setDateTo] = useState(new Date())
-    const [showNotifications, setShowNotifications] = useState(false)
-    const dateFromRef = useRef(null)
-    const dateToRef = useRef(null)
+    const [error, setError] = useState('')
 
-    // Fetch data when component mounts or date range changes
-    useEffect(() => {
-        fetchDashboardData(dateFrom, dateTo)
-    }, [dateFrom, dateTo])
-
-    const fetchDashboardData = async (fromDate, toDate) => {
+    const loadRangeData = useCallback(async () => {
         setLoading(true)
-        setError("")
-
+        setError('')
         try {
-            // Format dates for API
-            const dateFromString = fromDate.toISOString().split('T')[0]
-            const dateToString = toDate.toISOString().split('T')[0]
-
-            // Fetch transactions for the date range
-            const transactionsResponse = await salesAPI.getTransactions({
-                date_from: dateFromString,
-                date_to: dateToString
-            })
-            const transactionsData = transactionsResponse.data.results || transactionsResponse.data
-            setTransactions(Array.isArray(transactionsData) ? transactionsData : [])
-
-            // Fetch all products (for low stock alerts - not date dependent)
-            const productsResponse = await productsAPI.getAll()
-            const productsData = productsResponse.data.results || productsResponse.data
-            const productsList = Array.isArray(productsData) ? productsData : []
-            setProducts(productsList)
-            const lowStock = productsList.filter(p => p.is_low_stock).length
-            setLowStockCount(lowStock)
+            const { from, to } = getRangeDates(range)
+            const prev = getPreviousRangeDates(range)
+            const [txRes, prevTxRes, prodRes, openShiftRes] = await Promise.all([
+                salesAPI.getTransactions({ date_from: toISODate(from), date_to: toISODate(to) }),
+                salesAPI.getTransactions({ date_from: toISODate(prev.from), date_to: toISODate(prev.to) }),
+                productsAPI.getAll(),
+                salesAPI.getShifts({ status: 'open' }),
+            ])
+            setTransactions(asArray(txRes.data))
+            setPrevTransactions(asArray(prevTxRes.data))
+            setProducts(asArray(prodRes.data))
+            setOpenShifts(asArray(openShiftRes.data))
         } catch (err) {
-            setError("Failed to fetch dashboard data")
+            setError('Failed to load dashboard data')
             console.error(err)
         } finally {
             setLoading(false)
         }
-    }
+    }, [range])
 
-    const getMaxDate = () => {
-        const d = new Date()
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    }
+    useEffect(() => { loadRangeData() }, [loadRangeData])
 
-    const formatDateForInput = (dateObj) => {
-        return dateObj.toISOString().split('T')[0]
-    }
+    // Staff roster and recent shift closes don't depend on the date range.
+    useEffect(() => {
+        if (!currentShop?.id) return
+        shopsAPI.getMembers(currentShop.id).then((r) => setMembers(asArray(r.data))).catch(() => {})
+        salesAPI.getShifts({ status: 'closed' }).then((r) => setRecentClosedShifts(asArray(r.data).slice(0, 5))).catch(() => {})
+    }, [currentShop?.id])
 
-    const getDisplayDate = (dateObj) => {
-        return dateObj.toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        })
-    }
+    const totalSales = transactions.reduce((s, t) => s + parseFloat(t.total || 0), 0)
+    const prevTotalSales = prevTransactions.reduce((s, t) => s + parseFloat(t.total || 0), 0)
+    const txCount = transactions.length
+    const prevTxCount = prevTransactions.length
+    const avgSale = txCount ? totalSales / txCount : 0
+    const prevAvgSale = prevTxCount ? prevTotalSales / prevTxCount : 0
 
-    const getDateRangeLabel = () => {
-        const fromStr = getDisplayDate(dateFrom)
-        const toStr = getDisplayDate(dateTo)
-        if (fromStr === toStr) {
-            return fromStr
-        }
-        return `${fromStr} - ${toStr}`
-    }
+    const lowStockItems = products.filter((p) => p.is_low_stock)
 
-    // Transactions are already filtered by the date range from API
-    const totalSales = transactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
-
-    // Payment methods breakdown for selected date
-    const cashTransactions = transactions.filter(t => t.payment_method === 'cash')
-    const mpesaTransactions = transactions.filter(t => t.payment_method === 'mpesa')
-    const cashTotal = cashTransactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
-    const mpesaTotal = mpesaTransactions.reduce((sum, t) => sum + parseFloat(t.total || 0), 0)
-
-    // Low stock items
-    const lowStockItems = products.filter(p => p.is_low_stock).slice(0, 5)
-
-    // Top selling items (from selected date's transactions)
-    const getTopSellingItems = () => {
-        const itemCounts = {}
-        transactions.forEach(t => {
-            t.items?.forEach(item => {
-                if (itemCounts[item.product_name]) {
-                    itemCounts[item.product_name] += item.quantity
-                } else {
-                    itemCounts[item.product_name] = item.quantity
-                }
+    // Payment breakdown - apportions split-payment lines instead of ignoring them.
+    let cashTotal = 0, mpesaTotal = 0, cashCount = 0, mpesaCount = 0
+    transactions.forEach((t) => {
+        if (t.payment_method === 'cash') { cashTotal += parseFloat(t.total || 0); cashCount++ }
+        else if (t.payment_method === 'mpesa') { mpesaTotal += parseFloat(t.total || 0); mpesaCount++ }
+        else if (t.payment_method === 'split' && Array.isArray(t.payment_details)) {
+            let touchedCash = false, touchedMpesa = false
+            t.payment_details.forEach((d) => {
+                const amt = parseFloat(d.amount || 0)
+                if (d.method === 'mpesa') { mpesaTotal += amt; touchedMpesa = true }
+                else { cashTotal += amt; touchedCash = true }
             })
+            if (touchedCash) cashCount++
+            if (touchedMpesa) mpesaCount++
+        }
+    })
+
+    // Top selling by revenue, computed from this range's line items.
+    const productStats = {}
+    transactions.forEach((t) => {
+        (t.items || []).forEach((item) => {
+            const key = item.product_name
+            if (!productStats[key]) productStats[key] = { qty: 0, amt: 0 }
+            productStats[key].qty += item.quantity || 0
+            productStats[key].amt += parseFloat(item.subtotal ?? (item.quantity * item.unit_price)) || 0
         })
-        return Object.entries(itemCounts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5)
-    }
+    })
+    const topProducts = Object.entries(productStats)
+        .sort((a, b) => b[1].amt - a[1].amt)
+        .slice(0, 5)
+        .map(([name, stats]) => ({ name, ...stats }))
+    const topMax = topProducts[0]?.amt || 1
 
-    const topSellingItems = getTopSellingItems()
+    // Sales chart - hourly for Today/Yesterday, daily for 7d/30d, with the
+    // equivalent previous period bucketed the same way for comparison bars.
+    const hourly = range === 'today' || range === 'yesterday'
+    const { from: rangeFrom, to: rangeTo } = getRangeDates(range)
+    const prevRange = getPreviousRangeDates(range)
+    const nowBuckets = bucketize(transactions, rangeFrom, rangeTo, hourly)
+    const prevBuckets = bucketize(prevTransactions, prevRange.from, prevRange.to, hourly)
+    const chartMax = Math.max(1, ...nowBuckets.map((b) => b.value), ...prevBuckets.map((b) => b.value))
+    const bars = nowBuckets.map((b, i) => ({
+        label: b.label,
+        fullLabel: b.fullLabel,
+        now: b.value,
+        nowPct: (b.value / chartMax * 100) + '%',
+        prevPct: ((prevBuckets[i]?.value || 0) / chartMax * 100) + '%',
+    }))
+    // Cap the number of visible axis labels so dense buckets (30 daily bars)
+    // don't force the row wider than its container.
+    const labelStep = Math.max(1, Math.ceil(bars.length / 10))
+    const peakBar = bars.reduce((max, b) => (!max || b.now > max.now) ? b : max, null)
 
-    const handleDateFromChange = (e) => {
-        if (e.target.value) {
-            const newFromDate = new Date(e.target.value)
-            // If from date is after to date, swap them
-            if (newFromDate > dateTo) {
-                setDateFrom(dateTo)
-                setDateTo(newFromDate)
-            } else {
-                setDateFrom(newFromDate)
-            }
+    // Staff performance for the selected range, cross-referenced against
+    // who currently has an open shift (shop-wide, not just the viewer's own).
+    const staff = members.map((m) => {
+        const staffTx = transactions.filter((t) => t.cashier === m.user.id)
+        return {
+            id: m.user.id,
+            name: `${m.user.first_name || ''} ${m.user.last_name || ''}`.trim() || m.user.username,
+            role: m.role,
+            onDuty: openShifts.some((sh) => sh.cashier === m.user.id),
+            sales: staffTx.reduce((s, t) => s + parseFloat(t.total || 0), 0),
+            txCount: staffTx.length,
         }
-    }
+    }).sort((a, b) => b.sales - a.sales)
 
-    const handleDateToChange = (e) => {
-        if (e.target.value) {
-            const newToDate = new Date(e.target.value)
-            // If to date is before from date, swap them
-            if (newToDate < dateFrom) {
-                setDateTo(dateFrom)
-                setDateFrom(newToDate)
-            } else {
-                setDateTo(newToDate)
-            }
-        }
-    }
+    // Prefer the roster's real name over the raw username (currently an
+    // email address) when we have it.
+    const nameById = Object.fromEntries(staff.map((s) => [s.id, s.name]))
+    const staffName = (cashierId, fallbackName) => nameById[cashierId] || fallbackName || 'Unknown'
 
-    // Icons
-    const CalendarIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-        </svg>
-    )
+    // Real activity feed from actual sales, refunds and shift closes - no
+    // synthetic log, since none of that is tracked as a stored audit trail yet.
+    const activity = [
+        ...transactions.filter((t) => t.status === 'completed').map((t) => ({
+            time: t.created_at,
+            who: staffName(t.cashier, t.cashier_name),
+            what: `sold ${sumQty(t)} item${sumQty(t) === 1 ? '' : 's'} · ${
+                t.payment_method === 'mpesa' ? `M-Pesa ${t.mpesa_reference || ''}` : t.payment_method === 'split' ? 'split payment' : 'cash'
+            }`,
+            amt: `KSh ${k(t.total)}`,
+            dot: '#14373b',
+        })),
+        ...transactions.filter((t) => t.status === 'refunded').map((t) => ({
+            time: t.updated_at || t.created_at,
+            who: staffName(t.cashier, t.cashier_name),
+            what: `refunded transaction ${t.transaction_id}`,
+            amt: `-KSh ${k(t.total)}`,
+            dot: '#ed8674',
+        })),
+        ...recentClosedShifts.map((sh) => ({
+            time: sh.ended_at || sh.updated_at,
+            who: staffName(sh.cashier, sh.cashier_name),
+            what: `closed shift with a ${parseFloat(sh.cash_difference || 0) >= 0 ? '+' : '-'}KSh ${k(Math.abs(sh.cash_difference || 0))} variance`,
+            amt: `KSh ${k(sh.total_sales || 0)}`,
+            dot: '#d98b2b',
+        })),
+    ].filter((a) => a.time).sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8)
 
-    const SearchIcon = () => (
-        <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="M21 21l-4.35-4.35"></path>
-        </svg>
-    )
-
-    const BellIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-    )
-
-    const DollarIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="1" x2="12" y2="23"></line>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-        </svg>
-    )
-
-    const TrendingUpIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-            <polyline points="17 6 23 6 23 12"></polyline>
-        </svg>
-    )
-
-    const PackageIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-        </svg>
-    )
-
-    const CartIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="9" cy="21" r="1"></circle>
-            <circle cx="20" cy="21" r="1"></circle>
-            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-        </svg>
-    )
-
-    const AlertIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-            <line x1="12" y1="9" x2="12" y2="13"></line>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
-    )
-
-    const UsersIcon = () => (
-        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
-    )
-
-    const CreditCardIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-            <line x1="1" y1="10" x2="23" y2="10"></line>
-        </svg>
-    )
-
-    const PhoneIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-            <line x1="12" y1="18" x2="12.01" y2="18"></line>
-        </svg>
-    )
-
-    const StarIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-        </svg>
-    )
-
-    const PlusIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-    )
-
-    const ClipboardIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-        </svg>
-    )
-
-    const BarChartIcon = () => (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="20" x2="18" y2="10"></line>
-            <line x1="12" y1="20" x2="12" y2="4"></line>
-            <line x1="6" y1="20" x2="6" y2="14"></line>
-        </svg>
-    )
+    const greeting = (() => {
+        const h = new Date().getHours()
+        const first = user?.first_name || user?.username || 'there'
+        if (h < 12) return `Good morning, ${first}`
+        if (h < 17) return `Good afternoon, ${first}`
+        return `Good evening, ${first}`
+    })()
 
     return (
-        <div className="flex min-h-screen bg-pos-bg">
+        <div className="flex min-h-screen bg-brand-surface font-sans text-brand-ink">
             <Sidebar />
 
-            <div className="flex-1 flex flex-col min-w-0">
-                {/* Header Section */}
-                <header className="bg-white px-6 py-4 border-b border-pos-border relative z-10">
-                    <div className="flex items-center justify-between">
-                        <div className="relative flex-1 max-w-md">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                <SearchIcon />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Search..."
-                                className="w-full pl-10 pr-4 py-2 border border-pos-border rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
-                            />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            {/* Notifications Dropdown */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowNotifications(!showNotifications)}
-                                    className="p-2 text-gray-500 hover:text-pos-text hover:bg-pos-hover rounded-lg transition-colors relative"
-                                >
-                                    <BellIcon />
-                                    {lowStockCount > 0 && (
-                                        <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                                    )}
-                                </button>
-
-                                {/* Notifications Dropdown Menu */}
-                                {showNotifications && (
-                                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-pos-border z-50">
-                                        <div className="p-4 border-b border-pos-border">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="font-semibold text-pos-text">Notifications</h3>
-                                                <button
-                                                    onClick={() => setShowNotifications(false)}
-                                                    className="text-gray-400 hover:text-gray-600"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="max-h-96 overflow-y-auto">
-                                            {lowStockCount > 0 ? (
-                                                <div className="p-4">
-                                                    <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
-                                                        <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                                            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                            </svg>
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <p className="text-sm font-medium text-red-900">Low Stock Alert</p>
-                                                            <p className="text-xs text-red-700 mt-1">{lowStockCount} items need restocking</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="p-8 text-center">
-                                                    <div className="inline-flex items-center justify-center w-12 h-12 bg-gray-100 rounded-full mb-3">
-                                                        <BellIcon />
-                                                    </div>
-                                                    <p className="text-sm text-gray-500">No new notifications</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+            <div className="flex-1 min-w-0">
+                <header className="sticky top-0 z-20 bg-brand-surface/[0.88] backdrop-blur-md border-b border-brand-ink/[0.09]">
+                    <div className="flex items-center gap-4 px-8 py-3.5">
+                        <label className="flex-1 max-w-[440px] flex items-center gap-2.5 bg-white border border-brand-ink/[0.12] rounded-[11px] px-3 focus-within:border-brand-ink transition-colors">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="opacity-50 flex-none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                            <input type="text" placeholder="Search products, receipts, customers" className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm py-2.5" />
+                        </label>
+                        <div className="ml-auto flex items-center gap-2.5">
+                            <button
+                                aria-label="Notifications"
+                                onClick={() => navigate('/inventory')}
+                                className="relative w-10 h-10 grid place-items-center bg-white border border-brand-ink/[0.12] rounded-[11px] cursor-pointer hover:bg-brand-surface transition-colors"
+                            >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+                                {lowStockItems.length > 0 && (
+                                    <span className="absolute top-2 right-2.5 w-[7px] h-[7px] rounded-full bg-brand-accent ring-2 ring-white" />
                                 )}
-                            </div>
-                            {/* Date Range Picker */}
-                            <div className="flex items-center gap-2 bg-pos-bg px-3 py-1.5 rounded-lg">
-                                <CalendarIcon />
-                                <div className="relative flex items-center cursor-pointer" onClick={() => dateFromRef.current?.showPicker()}>
-                                    <span className="text-sm font-medium text-pos-text">{getDisplayDate(dateFrom)}</span>
-                                    <input
-                                        type="date"
-                                        ref={dateFromRef}
-                                        max={getMaxDate()}
-                                        onChange={handleDateFromChange}
-                                        value={formatDateForInput(dateFrom)}
-                                        className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
-                                </div>
-                                <span className="text-gray-400">-</span>
-                                <div className="relative flex items-center cursor-pointer" onClick={() => dateToRef.current?.showPicker()}>
-                                    <span className="text-sm font-medium text-pos-text">{getDisplayDate(dateTo)}</span>
-                                    <input
-                                        type="date"
-                                        ref={dateToRef}
-                                        max={getMaxDate()}
-                                        onChange={handleDateToChange}
-                                        value={formatDateForInput(dateTo)}
-                                        className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
-                                    />
-                                </div>
-                            </div>
-                            <ProfileDropdown />
+                            </button>
+                            <div className="w-px h-7 bg-brand-ink/[0.12] mx-1" />
+                            <button onClick={() => navigate('/profile')} className="flex items-center gap-2.5 cursor-pointer">
+                                <span className="w-[38px] h-[38px] rounded-full bg-brand-ink text-brand-surface grid place-items-center text-[13px] font-semibold">
+                                    {(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}{(user?.last_name?.[0] || '').toUpperCase()}
+                                </span>
+                                <span className="text-left hidden md:block">
+                                    <span className="block text-[13.5px] font-semibold">{user?.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user?.username}</span>
+                                    <span className="block text-xs text-brand-ink/55 capitalize">{currentShop?.role}</span>
+                                </span>
+                            </button>
                         </div>
                     </div>
                 </header>
 
-                {/* Main Content */}
-                <main className="flex-1 overflow-y-auto p-6">
+                <main className="px-8 pt-7 pb-12">
                     {error && (
-                        <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                            <AlertIcon />
-                            <span>{error}</span>
-                        </div>
+                        <div className="mb-5 px-4 py-3 rounded-lg bg-[#c8553d]/10 text-[#c8553d] text-sm">{error}</div>
                     )}
 
-                    {loading ? (
-                        <DashboardShimmer />
-                    ) : (
-                        <div className="space-y-6">
-                            {/* Sales Overview - Top Row Stats */}
-                            <div className="grid grid-cols-4 gap-4">
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                            <DollarIcon />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-gray-500">Total Sales</p>
-                                            <p className="text-2xl font-bold text-pos-text">KSh {totalSales.toFixed(2)}</p>
-                                        </div>
-                                    </div>
-                                </div>
+                    {loading ? <DashboardShimmer /> : (
+                        <div className="grid gap-5">
 
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                            <CartIcon />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-gray-500">Transactions</p>
-                                            <p className="text-2xl font-bold text-pos-text">{transactions.length}</p>
-                                        </div>
+                            <div className="flex items-end justify-between gap-5 flex-wrap">
+                                <div>
+                                    <div className="text-[13px] text-brand-ink/55">
+                                        {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                                     </div>
+                                    <h1 className="text-[28px] font-semibold tracking-[-0.03em] mt-1">{greeting}</h1>
                                 </div>
-
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                            <PackageIcon />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-gray-500">Low Stock Items</p>
-                                            <p className="text-2xl font-bold text-pos-text">{lowStockCount}</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                            <TrendingUpIcon />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-gray-500">Average Sale</p>
-                                            <p className="text-2xl font-bold text-pos-text">KSh {transactions.length > 0 ? (totalSales / transactions.length).toFixed(2) : '0.00'}</p>
-                                        </div>
-                                    </div>
+                                <div className="flex gap-1 p-1 bg-white border border-brand-ink/[0.12] rounded-xl">
+                                    {RANGES.map((r) => (
+                                        <button
+                                            key={r.key}
+                                            onClick={() => setRange(r.key)}
+                                            className={`border-0 text-[13.5px] font-semibold px-3.5 py-2 rounded-[9px] cursor-pointer transition-colors ${
+                                                range === r.key ? 'bg-brand-ink text-brand-surface' : 'bg-transparent text-brand-ink/60'
+                                            }`}
+                                        >
+                                            {r.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* Middle Row - Quick Actions & Payment Breakdown */}
-                            <div className="grid grid-cols-3 gap-6">
-                                {/* Quick Actions */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <h3 className="text-lg font-semibold text-pos-text mb-4">Quick Actions</h3>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={() => navigate('/sales')}
-                                            className="flex flex-col items-center gap-2 p-4 bg-pos-bg rounded-lg hover:bg-pos-hover transition-colors"
-                                        >
-                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-pos-text border border-pos-border">
-                                                <PlusIcon />
-                                            </div>
-                                            <span className="text-sm text-pos-text">New Sale</span>
-                                        </button>
-                                        <button
-                                            onClick={() => navigate('/inventory')}
-                                            className="flex flex-col items-center gap-2 p-4 bg-pos-bg rounded-lg hover:bg-pos-hover transition-colors"
-                                        >
-                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-pos-text border border-pos-border">
-                                                <PackageIcon />
-                                            </div>
-                                            <span className="text-sm text-pos-text">Inventory</span>
-                                        </button>
-                                        <button
-                                            onClick={() => navigate('/transactions')}
-                                            className="flex flex-col items-center gap-2 p-4 bg-pos-bg rounded-lg hover:bg-pos-hover transition-colors"
-                                        >
-                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-pos-text border border-pos-border">
-                                                <ClipboardIcon />
-                                            </div>
-                                            <span className="text-sm text-pos-text">Transactions</span>
-                                        </button>
-                                        <button
-                                            onClick={() => navigate('/reports')}
-                                            className="flex flex-col items-center gap-2 p-4 bg-pos-bg rounded-lg hover:bg-pos-hover transition-colors"
-                                        >
-                                            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center text-pos-text border border-pos-border">
-                                                <BarChartIcon />
-                                            </div>
-                                            <span className="text-sm text-pos-text">Reports</span>
-                                        </button>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                                <div className="bg-brand-ink text-brand-surface rounded-2xl px-[22px] py-5 grid gap-3.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[13px] font-medium text-brand-surface/70">Total sales</span>
+                                        <span className="text-xs font-semibold text-brand-accent">{formatDelta(deltaPct(totalSales, prevTotalSales))} {COMPARISON_LABEL[range]}</span>
+                                    </div>
+                                    <div className="text-[30px] font-semibold tracking-[-0.035em] leading-none">
+                                        <span className="text-base font-medium opacity-60 mr-1">KSh</span>{k(totalSales)}
                                     </div>
                                 </div>
-
-                                {/* Payment Methods Breakdown */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <h3 className="text-lg font-semibold text-pos-text mb-4">Payment Methods</h3>
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                                    <CreditCardIcon />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-pos-text">Cash</p>
-                                                    <p className="text-sm text-gray-500">{cashTransactions.length} transactions</p>
-                                                </div>
-                                            </div>
-                                            <span className="font-semibold text-pos-text">KSh {cashTotal.toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-pos-bg rounded-lg flex items-center justify-center text-pos-text">
-                                                    <PhoneIcon />
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-pos-text">M-Pesa</p>
-                                                    <p className="text-sm text-gray-500">{mpesaTransactions.length} transactions</p>
-                                                </div>
-                                            </div>
-                                            <span className="font-semibold text-pos-text">KSh {mpesaTotal.toFixed(2)}</span>
-                                        </div>
-                                        {totalSales > 0 && (
-                                            <div className="pt-3 border-t border-pos-border">
-                                                <div className="flex gap-2">
-                                                    <div
-                                                        className="h-2 bg-pos-text rounded-full"
-                                                        style={{ width: `${(cashTotal / totalSales) * 100}%` }}
-                                                    ></div>
-                                                    <div
-                                                        className="h-2 bg-gray-400 rounded-full"
-                                                        style={{ width: `${(mpesaTotal / totalSales) * 100}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        )}
+                                <div className="bg-white border border-brand-ink/[0.09] rounded-2xl px-[22px] py-5 grid gap-3.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[13px] font-medium text-brand-ink/60">Transactions</span>
+                                        <span className="text-xs font-semibold text-[#2f7a5f]">{formatDelta(deltaPct(txCount, prevTxCount))}</span>
                                     </div>
+                                    <div className="text-[30px] font-semibold tracking-[-0.035em] leading-none">{k(txCount)}</div>
+                                    <div className="text-[12.5px] text-brand-ink/55">{txCount ? 'Updated live' : 'No receipts issued'}</div>
                                 </div>
+                                <div className="bg-white border border-brand-ink/[0.09] rounded-2xl px-[22px] py-5 grid gap-3.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[13px] font-medium text-brand-ink/60">Average sale</span>
+                                        <span className="text-xs font-semibold text-[#2f7a5f]">{formatDelta(deltaPct(avgSale, prevAvgSale))}</span>
+                                    </div>
+                                    <div className="text-[30px] font-semibold tracking-[-0.035em] leading-none">
+                                        <span className="text-base font-medium opacity-50 mr-1">KSh</span>{k(avgSale)}
+                                    </div>
+                                    <div className="text-[12.5px] text-brand-ink/55">{COMPARISON_LABEL[range]}</div>
+                                </div>
+                                <div className="bg-white border border-brand-ink/[0.09] rounded-2xl px-[22px] py-5 grid gap-3.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[13px] font-medium text-brand-ink/60">Low stock</span>
+                                        <button onClick={() => navigate('/inventory')} className="text-xs font-semibold underline">Review</button>
+                                    </div>
+                                    <div className="text-[30px] font-semibold tracking-[-0.035em] leading-none" style={{ color: lowStockItems.length ? '#c8553d' : '#14373b' }}>
+                                        {lowStockItems.length}
+                                    </div>
+                                    <div className="text-[12.5px] text-brand-ink/55">{lowStockItems.length ? `${lowStockItems.length} item${lowStockItems.length === 1 ? '' : 's'} below reorder point` : 'Everything above reorder point'}</div>
+                                </div>
+                            </div>
 
-                                {/* Staff Performance */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <h3 className="text-lg font-semibold text-pos-text mb-4">Staff Performance</h3>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-12 h-12 bg-pos-bg rounded-full flex items-center justify-center text-pos-text">
-                                            <UsersIcon />
-                                        </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <div className="flex justify-between items-baseline gap-3">
                                         <div>
-                                            <p className="font-medium text-pos-text">{user?.username || 'Cashier'}</p>
-                                            <p className="text-sm text-gray-500">On Duty</p>
+                                            <h2 className="text-base font-semibold tracking-[-0.01em]">{hourly ? 'Sales by hour' : 'Sales by day'}</h2>
+                                            <div className="text-[12.5px] text-brand-ink/55 mt-0.5">
+                                                {txCount === 0 ? 'No sales recorded yet' : peakBar ? `Peak ${hourly ? 'at' : 'on'} ${peakBar.fullLabel} · KSh ${k(peakBar.now)}` : ''}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3.5 text-xs text-brand-ink/60">
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-brand-ink" />{RANGES.find((r) => r.key === range)?.label}</span>
+                                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-brand-ink/[0.16]" />{COMPARISON_LABEL[range].replace('vs ', '')}</span>
                                         </div>
                                     </div>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Sales</span>
-                                            <span className="font-medium text-pos-text">KSh {totalSales.toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Transactions</span>
-                                            <span className="font-medium text-pos-text">{transactions.length}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-gray-500">Avg. Transaction</span>
-                                            <span className="font-medium text-pos-text">
-                                                KSh {transactions.length > 0 ? (totalSales / transactions.length).toFixed(2) : '0.00'}
+                                    <div className={`flex items-end h-[220px] mt-6 px-1 ${bars.length > 15 ? 'gap-1' : 'gap-2'}`}>
+                                        {bars.map((b, i) => (
+                                            <div key={i} className="flex-1 flex flex-col items-center min-w-0 h-full overflow-hidden">
+                                                <div className="flex-1 w-full flex items-end justify-center gap-[3px]">
+                                                    <div className="w-[38%] rounded-t bg-brand-ink/[0.14]" style={{ height: b.prevPct }} />
+                                                    <div
+                                                        title={`KSh ${k(b.now)}`}
+                                                        className="w-[38%] rounded-t"
+                                                        style={{ height: b.nowPct, background: peakBar === b ? '#ed8674' : '#14373b' }}
+                                                    />
+                                                </div>
+                                                <div className="h-6 pt-1.5 font-mono text-[10.5px] text-brand-ink/45 whitespace-nowrap">
+                                                    {i % labelStep === 0 ? b.label : ''}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6 flex flex-col">
+                                    <h2 className="text-base font-semibold tracking-[-0.01em]">Payment methods</h2>
+                                    <div className="text-[12.5px] text-brand-ink/55 mt-0.5">
+                                        {totalSales ? `${Math.round(mpesaTotal / totalSales * 100)}% of revenue via M-Pesa` : 'No payments yet'}
+                                    </div>
+                                    <div className="flex h-2.5 rounded-full overflow-hidden mt-5 bg-brand-ink/[0.08]">
+                                        <div style={{ width: totalSales ? `${mpesaTotal / totalSales * 100}%` : '0%' }} className="bg-brand-ink" />
+                                        <div style={{ width: totalSales ? `${cashTotal / totalSales * 100}%` : '0%' }} className="bg-brand-accent" />
+                                    </div>
+                                    <div className="grid gap-2.5 mt-5">
+                                        <div className="flex items-center gap-3 p-3.5 bg-brand-surface rounded-xl">
+                                            <span className="w-[34px] h-[34px] rounded-[9px] bg-brand-ink text-brand-surface grid place-items-center flex-none">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><path d="M11 18h2"></path></svg>
                                             </span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-semibold">M-Pesa</div>
+                                                <div className="text-xs text-brand-ink/55">{mpesaCount} transaction{mpesaCount === 1 ? '' : 's'}</div>
+                                            </div>
+                                            <div className="font-mono text-[13.5px] font-medium">KSh {k(mpesaTotal)}</div>
+                                        </div>
+                                        <div className="flex items-center gap-3 p-3.5 bg-brand-surface rounded-xl">
+                                            <span className="w-[34px] h-[34px] rounded-[9px] bg-brand-accent text-brand-ink grid place-items-center flex-none">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle></svg>
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-semibold">Cash</div>
+                                                <div className="text-xs text-brand-ink/55">{cashCount} transaction{cashCount === 1 ? '' : 's'}</div>
+                                            </div>
+                                            <div className="font-mono text-[13.5px] font-medium">KSh {k(cashTotal)}</div>
                                         </div>
                                     </div>
-                                </div>
+                                </section>
                             </div>
 
-                            {/* Bottom Row - Inventory Alerts, Top Performers, Notifications */}
-                            <div className="grid grid-cols-3 gap-6">
-                                {/* Inventory Alerts */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-pos-text">Inventory Alerts</h3>
-                                        <span className="px-2 py-1 bg-pos-bg text-pos-text text-xs font-medium rounded-full">
-                                            {lowStockCount} items
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-base font-semibold tracking-[-0.01em]">Top selling</h2>
+                                        <button onClick={() => navigate('/reports')} className="text-[12.5px] font-semibold text-brand-ink/60">See report</button>
+                                    </div>
+                                    {topProducts.length > 0 ? (
+                                        <div className="grid gap-1 mt-3.5">
+                                            {topProducts.map((t, i) => (
+                                                <div key={t.name} className="grid grid-cols-[20px_minmax(0,1fr)_auto] gap-3 items-center py-2.5">
+                                                    <span className="font-mono text-xs text-brand-ink/40">{String(i + 1).padStart(2, '0')}</span>
+                                                    <div className="min-w-0">
+                                                        <div className="flex justify-between gap-2 text-[13.5px]">
+                                                            <span className="font-semibold truncate">{t.name}</span>
+                                                            <span className="text-brand-ink/55 flex-none">{t.qty} sold</span>
+                                                        </div>
+                                                        <div className="h-1 rounded-full bg-brand-ink/[0.08] mt-1.5">
+                                                            <div className="h-full rounded-full" style={{ width: `${t.amt / topMax * 100}%`, background: i === 0 ? '#ed8674' : '#14373b' }} />
+                                                        </div>
+                                                    </div>
+                                                    <span className="font-mono text-xs min-w-[64px] text-right">{k(t.amt)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8 px-2">
+                                            <div className="text-sm font-semibold">No sales yet {range === 'today' ? 'today' : 'in this period'}</div>
+                                            <p className="text-[13px] text-brand-ink/55 mt-1.5 mb-4">Your best sellers will rank here as soon as the first receipt prints.</p>
+                                            <button onClick={() => navigate('/sales')} className="bg-brand-ink text-brand-surface border-0 text-[13.5px] font-semibold px-4 py-2.5 rounded-[10px] cursor-pointer hover:bg-brand-ink/90 transition-colors">Make first sale</button>
+                                        </div>
+                                    )}
+                                </section>
+
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-base font-semibold tracking-[-0.01em]">Inventory alerts</h2>
+                                        <span
+                                            className="text-xs font-semibold px-2.5 py-[3px] rounded-full"
+                                            style={{ background: lowStockItems.length ? 'rgba(200,85,61,0.12)' : 'rgba(47,122,95,0.12)', color: lowStockItems.length ? '#b04a34' : '#2f7a5f' }}
+                                        >
+                                            {lowStockItems.length ? `${lowStockItems.length} items` : 'All clear'}
                                         </span>
                                     </div>
-                                    {lowStockItems.length === 0 ? (
-                                        <div className="text-center py-6 text-gray-500">
-                                            <PackageIcon />
-                                            <p className="mt-2 text-sm">All items are well stocked</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {lowStockItems.map(item => (
-                                                <div key={item.id} className="flex items-center justify-between p-2 bg-pos-bg rounded-lg">
-                                                    <div>
-                                                        <p className="text-sm font-medium text-pos-text">{item.name}</p>
-                                                        <p className="text-xs text-gray-500">{item.sku}</p>
+                                    {lowStockItems.length > 0 ? (
+                                        <div className="grid gap-2 mt-4">
+                                            {lowStockItems.slice(0, 4).map((item) => (
+                                                <div key={item.id} className="flex items-center gap-3 px-3 py-2.5 border border-brand-ink/[0.08] rounded-[11px]">
+                                                    <span className="w-2 h-2 rounded-full flex-none" style={{ background: item.stock_quantity === 0 ? '#c8553d' : '#d98b2b' }} />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-[13.5px] font-semibold truncate">{item.name}</div>
+                                                        <div className="text-xs text-brand-ink/55">Reorder at {item.reorder_level}</div>
                                                     </div>
-                                                    <span className="px-2 py-1 bg-white text-pos-text text-xs font-medium rounded border border-pos-border">
-                                                        {item.stock_quantity} left
-                                                    </span>
+                                                    <span className="text-[13px] font-semibold" style={{ color: item.stock_quantity === 0 ? '#c8553d' : '#d98b2b' }}>{item.stock_quantity} left</span>
+                                                    <button onClick={() => navigate('/inventory')} className="bg-transparent border border-brand-ink/[0.16] text-xs font-semibold px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-brand-surface transition-colors">Restock</button>
                                                 </div>
                                             ))}
                                         </div>
-                                    )}
-                                </div>
-
-                                {/* Top Performers */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-pos-text">Top Selling</h3>
-                                        <span className="text-pos-text"><StarIcon /></span>
-                                    </div>
-                                    {topSellingItems.length === 0 ? (
-                                        <div className="text-center py-6 text-gray-500">
-                                            <CartIcon />
-                                            <p className="mt-2 text-sm">No sales for this date</p>
-                                        </div>
                                     ) : (
-                                        <div className="space-y-3">
-                                            {topSellingItems.map(([name, qty], index) => (
-                                                <div key={name} className="flex items-center gap-3">
-                                                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-pos-bg text-pos-text">
-                                                        {index + 1}
-                                                    </span>
-                                                    <div className="flex-1">
-                                                        <p className="text-sm font-medium text-pos-text truncate">{name}</p>
-                                                    </div>
-                                                    <span className="text-sm text-gray-500">{qty} sold</span>
-                                                </div>
-                                            ))}
+                                        <div className="text-center py-8 px-2">
+                                            <div className="text-sm font-semibold">All items well stocked</div>
+                                            <p className="text-[13px] text-brand-ink/55 mt-1.5">Set reorder points in Inventory to get warned early.</p>
                                         </div>
                                     )}
-                                </div>
+                                </section>
 
-                                {/* Real-time Notifications */}
-                                <div className="bg-white rounded-xl p-5">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-semibold text-pos-text">Notifications</h3>
-                                        <span className="text-pos-text"><BellIcon /></span>
+                                <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-base font-semibold tracking-[-0.01em]">Staff today</h2>
+                                        <button onClick={() => navigate('/settings')} className="text-[12.5px] font-semibold text-brand-ink/60">Manage</button>
                                     </div>
-                                    <div className="space-y-3">
-                                        {lowStockCount > 0 && (
-                                            <div className="flex items-start gap-3 p-3 bg-pos-bg rounded-lg">
-                                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-pos-text flex-shrink-0 border border-pos-border">
-                                                    <AlertIcon />
+                                    <div className="grid gap-1 mt-3">
+                                        {staff.map((p) => (
+                                            <div key={p.id} className="flex items-center gap-3 py-2.5 border-b border-brand-ink/[0.07] last:border-b-0">
+                                                <span className="relative w-9 h-9 rounded-full bg-brand-ink text-brand-surface grid place-items-center text-xs font-semibold flex-none">
+                                                    {p.name.slice(0, 2).toUpperCase()}
+                                                    <span
+                                                        className="absolute -right-px -bottom-px w-2.5 h-2.5 rounded-full ring-2 ring-white"
+                                                        style={{ background: p.onDuty ? '#2f7a5f' : 'rgba(20,55,59,0.3)' }}
+                                                    />
+                                                </span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-[13.5px] font-semibold truncate">{p.name}</div>
+                                                    <div className="text-xs text-brand-ink/55 capitalize">{p.role} · {p.onDuty ? 'on duty' : 'off shift'}</div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-sm font-medium text-pos-text">Low Stock Alert</p>
-                                                    <p className="text-xs text-gray-500">{lowStockCount} items need restocking</p>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {transactions.length > 0 && (
-                                            <div className="flex items-start gap-3 p-3 bg-pos-bg rounded-lg">
-                                                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-pos-text flex-shrink-0 border border-pos-border">
-                                                    <DollarIcon />
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-medium text-pos-text">Sales Update</p>
-                                                    <p className="text-xs text-gray-500">{transactions.length} transactions ({getDateRangeLabel()})</p>
+                                                <div className="text-right">
+                                                    <div className="font-mono text-xs">KSh {k(p.sales)}</div>
+                                                    <div className="text-[11.5px] text-brand-ink/50">{p.txCount} sales</div>
                                                 </div>
                                             </div>
-                                        )}
-                                        {transactions.length === 0 && lowStockCount === 0 && (
-                                            <div className="text-center py-6 text-gray-500">
-                                                <BellIcon />
-                                                <p className="mt-2 text-sm">No new notifications</p>
-                                            </div>
-                                        )}
+                                        ))}
                                     </div>
-                                </div>
+                                </section>
                             </div>
+
+                            <section className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                                <div className="flex justify-between items-center">
+                                    <h2 className="text-base font-semibold tracking-[-0.01em]">Activity</h2>
+                                    <button onClick={() => navigate('/transactions')} className="text-[12.5px] font-semibold text-brand-ink/60">All transactions</button>
+                                </div>
+                                {activity.length > 0 ? (
+                                    <div className="grid mt-2.5">
+                                        {activity.map((n, i) => (
+                                            <div key={i} className="grid grid-cols-[58px_10px_minmax(0,1fr)_auto] gap-3.5 items-center py-2.5 border-b border-brand-ink/[0.07] last:border-b-0">
+                                                <span className="font-mono text-xs text-brand-ink/50">{new Date(n.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span className="w-2 h-2 rounded-full" style={{ background: n.dot }} />
+                                                <span className="text-[13.5px] truncate"><strong className="font-semibold">{n.who}</strong> {n.what}</span>
+                                                <span className="font-mono text-xs text-brand-ink/70">{n.amt}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="py-7 px-2 text-center text-[13px] text-brand-ink/55">Nothing yet (sales, refunds and shift changes will appear here).</div>
+                                )}
+                            </section>
+
                         </div>
                     )}
                 </main>

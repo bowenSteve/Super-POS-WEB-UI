@@ -6,26 +6,64 @@ import Customers from "./pages/Customers"
 import Reports from "./pages/Reports"
 import Settings from "./pages/Settings"
 import Profile from "./pages/Profile"
-import Login from "./pages/Login"
-import Signup from "./pages/Signup"
 import CreateShop from "./pages/CreateShop"
+import AuthCallback from "./pages/AuthCallback"
+import VerifyEmail from "./pages/VerifyEmail"
+import AcceptInvite from "./pages/AcceptInvite"
 import ProtectedRoute from "./components/ProtectedRoute"
+import HomeRoute from "./components/HomeRoute"
+import MarketingPages from "./marketing/Pages"
+import MarketingAuth from "./marketing/MarketingAuth"
 
 const routes = [
+    // Public marketing site - '/' shows Landing when logged out, otherwise
+    // redirects straight to '/dashboard'.
+    {
+        path: '/',
+        element: <HomeRoute />
+    },
+    {
+        path: '/product',
+        element: <MarketingPages section="product" />
+    },
+    {
+        path: '/multi-store',
+        element: <MarketingPages section="multistore" />
+    },
+    {
+        path: '/pricing',
+        element: <MarketingPages section="pricing" />
+    },
+    {
+        path: '/customer-stories',
+        element: <MarketingPages section="customers" />
+    },
     {
         path: '/login',
-        element: <Login />
+        element: <MarketingAuth mode="login" />
     },
     {
         path: '/signup',
-        element: <Signup />
+        element: <MarketingAuth mode="signup" />
+    },
+    {
+        path: '/auth/callback',
+        element: <AuthCallback />
+    },
+    {
+        path: '/verify-email',
+        element: <VerifyEmail />
+    },
+    {
+        path: '/accept-invite',
+        element: <AcceptInvite />
     },
     {
         path: '/create-shop',
         element: <ProtectedRoute><CreateShop /></ProtectedRoute>
     },
     {
-        path: '/',
+        path: '/dashboard',
         element: <ProtectedRoute permission="dashboard"><Home /></ProtectedRoute>
     },
     {

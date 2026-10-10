@@ -17,16 +17,16 @@ const ProfileDropdown = () => {
   return (
     <button
       onClick={() => navigate('/profile')}
-      className="flex items-center gap-2 p-2 hover:bg-pos-hover rounded-lg transition-colors cursor-pointer"
+      className="flex items-center gap-2.5 p-2 hover:bg-brand-surface rounded-xl transition-colors cursor-pointer"
       title="Go to Profile"
     >
-      <div className="w-9 h-9 rounded-full bg-pos-primary text-white flex items-center justify-center font-medium text-sm">
+      <div className="w-9 h-9 rounded-full bg-brand-ink text-brand-surface flex items-center justify-center font-semibold text-sm">
         {getInitials(user?.username || 'User')}
       </div>
       <div className="text-left hidden md:block">
-        <p className="text-sm font-medium text-pos-text">{user?.username || 'User'}</p>
+        <p className="text-sm font-semibold text-brand-ink">{user?.username || 'User'}</p>
         {currentShop && (
-          <p className="text-xs text-gray-500">{currentShop.name}</p>
+          <p className="text-xs text-brand-ink/55">{currentShop.name}</p>
         )}
       </div>
     </button>

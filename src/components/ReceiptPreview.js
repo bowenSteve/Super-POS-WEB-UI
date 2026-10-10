@@ -117,16 +117,16 @@ function ReceiptPreview({
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(12,34,37,0.5)] backdrop-blur-sm font-sans text-brand-ink">
+            <div className="bg-white rounded-[22px] shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-pos-primary text-white">
-                    <h2 className="text-lg font-semibold">Receipt Preview</h2>
+                <div className="flex items-center justify-between px-6 py-4 bg-brand-ink text-brand-surface">
+                    <h2 className="text-lg font-semibold">Receipt preview</h2>
                     <button
                         onClick={onClose}
-                        className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+                        className="w-8 h-8 rounded-lg bg-brand-surface/10 hover:bg-brand-surface/20 grid place-items-center transition-colors cursor-pointer"
                     >
-                        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M18 6L6 18M6 6l12 12"></path>
                         </svg>
                     </button>
@@ -136,7 +136,7 @@ function ReceiptPreview({
                 <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
                     <div ref={receiptRef} className="bg-white font-mono text-sm">
                         {/* Receipt Header */}
-                        <div className="receipt-header text-center border-b-2 border-dashed border-gray-400 pb-3 mb-3">
+                        <div className="receipt-header text-center border-b-2 border-dashed border-brand-ink/25 pb-3 mb-3">
                             <h2 className="text-xl font-bold mb-1">{shop?.name || 'Super POS'}</h2>
                             {shop?.address && <p className="text-xs">{shop.address}</p>}
                             {shop?.phone && <p className="text-xs">Tel: {shop.phone}</p>}
@@ -170,9 +170,9 @@ function ReceiptPreview({
                         </div>
 
                         {/* Items Table */}
-                        <table className="w-full border-t border-gray-300">
+                        <table className="w-full border-t border-brand-ink/20">
                             <thead>
-                                <tr className="border-b border-gray-300">
+                                <tr className="border-b border-brand-ink/20">
                                     <th className="text-left py-1">Item</th>
                                     <th className="text-center py-1">Qty</th>
                                     <th className="text-right py-1">Price</th>
@@ -192,13 +192,13 @@ function ReceiptPreview({
                         </table>
 
                         {/* Totals */}
-                        <div className="totals border-t-2 border-gray-400 pt-2 mt-2">
+                        <div className="totals border-t-2 border-brand-ink/30 pt-2 mt-2">
                             <div className="total-row flex justify-between text-sm">
                                 <span>Subtotal:</span>
                                 <span>{currency} {subtotal.toFixed(2)}</span>
                             </div>
                             {discountAmount > 0 && (
-                                <div className="total-row flex justify-between text-sm text-green-600">
+                                <div className="total-row flex justify-between text-sm text-[#2f7a5f]">
                                     <span>Discount:</span>
                                     <span>-{currency} {discountAmount.toFixed(2)}</span>
                                 </div>
@@ -209,7 +209,7 @@ function ReceiptPreview({
                                     <span>{currency} {taxAmount.toFixed(2)}</span>
                                 </div>
                             )}
-                            <div className="grand-total flex justify-between text-base font-bold border-t-2 border-dashed border-gray-400 pt-2 mt-2">
+                            <div className="grand-total flex justify-between text-base font-bold border-t-2 border-dashed border-brand-ink/30 pt-2 mt-2">
                                 <span>TOTAL:</span>
                                 <span>{currency} {total.toFixed(2)}</span>
                             </div>
@@ -228,7 +228,7 @@ function ReceiptPreview({
                         </div>
 
                         {/* Footer */}
-                        <div className="footer text-center mt-4 text-xs border-t-2 border-dashed border-gray-400 pt-3">
+                        <div className="footer text-center mt-4 text-xs border-t-2 border-dashed border-brand-ink/30 pt-3">
                             <p className="font-semibold">Thank you for your business!</p>
                             <p className="mt-1">Powered by Super POS</p>
                         </div>
@@ -236,29 +236,29 @@ function ReceiptPreview({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="flex gap-3 px-6 py-4 border-t border-brand-ink/10 bg-brand-surface">
                     <button
                         onClick={onClose}
-                        className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium"
+                        className="flex-1 px-4 py-2.5 border border-brand-ink/[0.16] rounded-xl hover:bg-white transition-colors font-semibold cursor-pointer"
                     >
                         Cancel
                     </button>
                     <button
-                        onClick={() => onConfirm()}
-                        className="flex-1 px-4 py-2.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
-                    >
-                        Complete (No Print)
-                    </button>
-                    <button
                         onClick={handleConfirmAndPrint}
-                        className="flex-1 px-4 py-2.5 bg-pos-primary text-white rounded-lg hover:bg-pos-text/90 transition-colors font-medium flex items-center justify-center gap-2"
+                        className="flex-1 px-4 py-2.5 bg-white border border-brand-ink/[0.16] rounded-xl hover:bg-white/80 transition-colors font-semibold flex items-center justify-center gap-2 cursor-pointer"
                     >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <polyline points="6 9 6 2 18 2 18 9"></polyline>
                             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
                             <rect x="6" y="14" width="12" height="8"></rect>
                         </svg>
-                        Print & Complete
+                        Print & complete
+                    </button>
+                    <button
+                        onClick={() => onConfirm()}
+                        className="flex-1 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors font-semibold cursor-pointer"
+                    >
+                        Complete (no print)
                     </button>
                 </div>
             </div>

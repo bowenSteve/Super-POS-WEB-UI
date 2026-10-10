@@ -73,6 +73,7 @@ export const AuthProvider = ({ children }) => {
                 const firstShop = {
                     id: userShops[0].shop.id,
                     name: userShops[0].shop.name,
+                    slug: userShops[0].shop.slug,
                     role: userShops[0].role
                 }
                 setCurrentShop(firstShop)
@@ -89,6 +90,7 @@ export const AuthProvider = ({ children }) => {
         const shopData = {
             id: shop.shop?.id || shop.id,
             name: shop.shop?.name || shop.name,
+            slug: shop.shop?.slug || shop.slug,
             role: shop.role
         }
         setCurrentShop(shopData)
@@ -111,7 +113,16 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (credentials) => {
         try {
-            const response = await authAPI.login(credentials)
+            const deviceToken = localStorage.getItem('device_token')
+            const response = await authAPI.login({
+                ...credentials,
+                ...(deviceToken ? { device_token: deviceToken } : {}),
+            })
+
+            if (response.data.otp_required) {
+                return { success: false, otpRequired: true, loginToken: response.data.login_token }
+            }
+
             const { access, refresh, user } = response.data
 
             localStorage.setItem('access_token', access)
@@ -129,6 +140,84 @@ export const AuthProvider = ({ children }) => {
             return {
                 success: false,
                 error: error.response?.data?.detail || 'Login failed'
+            }
+        }
+    }
+
+    // Second step of login after the email code is sent (see login() above).
+    const verifyLoginOtp = async (loginToken, code, rememberMe) => {
+        try {
+            const response = await authAPI.verifyLoginOtp(loginToken, code, rememberMe)
+            const { access, refresh, user, device_token: deviceToken } = response.data
+
+            localStorage.setItem('access_token', access)
+            localStorage.setItem('refresh_token', refresh)
+            localStorage.setItem('user', JSON.stringify(user))
+            if (deviceToken) {
+                localStorage.setItem('device_token', deviceToken)
+            }
+
+            setUser(user)
+            setIsAuthenticated(true)
+
+            await fetchUserShops()
+
+            return { success: true }
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.detail || 'Invalid or expired code'
+            }
+        }
+    }
+
+    // Patches email_verified into the in-memory + stored user after
+    // /auth/verify-email/ succeeds, so ProtectedRoute stops redirecting
+    // without needing a full re-login.
+    const markEmailVerified = () => {
+        setUser((prev) => {
+            if (!prev) return prev
+            const updated = { ...prev, email_verified: true }
+            localStorage.setItem('user', JSON.stringify(updated))
+            return updated
+        })
+    }
+
+    // Exchanges a short-lived handoff code (minted by the central login or by
+    // switching shops) for real tokens, scoped to the shop that code was
+    // minted for. Used by /auth/callback and by same-origin signup/login
+    // fallbacks when no workspace subdomain is configured yet.
+    const loginWithHandoff = async (code) => {
+        try {
+            const response = await authAPI.exchangeHandoff(code)
+            const { access, refresh, user: handoffUser, shop } = response.data
+
+            localStorage.setItem('access_token', access)
+            localStorage.setItem('refresh_token', refresh)
+            localStorage.setItem('user', JSON.stringify(handoffUser))
+
+            setUser(handoffUser)
+            setIsAuthenticated(true)
+
+            const shopsResponse = await authAPI.get('/shops/my_shops/')
+            const userShops = shopsResponse.data
+            setShops(userShops)
+
+            const membership = userShops.find((m) => m.shop.id === shop.id)
+            const shopData = {
+                id: shop.id,
+                name: shop.name,
+                slug: shop.slug,
+                role: membership?.role || 'owner'
+            }
+            setCurrentShop(shopData)
+            localStorage.setItem('current_shop', JSON.stringify(shopData))
+
+            return { success: true }
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.detail || 'This sign-in link is invalid or has expired'
             }
         }
     }
@@ -176,6 +265,8 @@ export const AuthProvider = ({ children }) => {
         loading,
         isAuthenticated,
         login,
+        verifyLoginOtp,
+        markEmailVerified,
         signup,
         logout,
         checkAuth,
@@ -184,7 +275,8 @@ export const AuthProvider = ({ children }) => {
         loadingShops,
         switchShop,
         updateCurrentShop,
-        fetchUserShops
+        fetchUserShops,
+        loginWithHandoff
     }
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

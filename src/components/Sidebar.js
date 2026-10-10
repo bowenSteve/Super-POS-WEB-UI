@@ -1,15 +1,19 @@
-import { useState } from "react"
-import { NavLink, useNavigate } from "react-router-dom"
+import { useState, useEffect } from "react"
+import { NavLink, Link, useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 import { useShift } from "../context/ShiftContext"
 import { usePermissions } from "../hooks/usePermissions"
+import { productsAPI } from "../api/api"
 import ShiftModal from "./ShiftModal"
+import ShopSelector from "./ShopSelector"
 
 function Sidebar() {
     const navigate = useNavigate()
     const { logout } = useAuth()
-    const { currentShift, isShiftOpen } = useShift()
+    const { isShiftOpen, currentShift } = useShift()
     const [showShiftModal, setShowShiftModal] = useState(false)
+    const [lowStockCount, setLowStockCount] = useState(0)
+    const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true')
     const {
         canAccessDashboard,
         canAccessPOS,
@@ -19,152 +23,184 @@ function Sidebar() {
         canAccessSettings
     } = usePermissions()
 
+    useEffect(() => {
+        if (!canAccessInventory) return
+        productsAPI.getAll().then((response) => {
+            const data = response.data.results || response.data
+            const list = Array.isArray(data) ? data : []
+            setLowStockCount(list.filter((p) => p.is_low_stock).length)
+        }).catch(() => {})
+    }, [canAccessInventory])
+
     const handleLogout = () => {
         logout()
         navigate('/login')
     }
 
+    const toggleCollapsed = () => {
+        const next = !collapsed
+        setCollapsed(next)
+        localStorage.setItem('sidebar_collapsed', String(next))
+    }
+
     const formatShiftTime = (dateString) => {
         if (!dateString) return ''
-        const date = new Date(dateString)
-        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     }
 
     const navLinkClass = ({ isActive }) =>
-        `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+        `flex items-center gap-3 rounded-[10px] text-sm font-medium transition-colors relative ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'} ${
             isActive
-                ? 'bg-pos-hover text-pos-text font-medium'
-                : 'text-gray-600 hover:bg-pos-hover hover:text-pos-text'
+                ? 'bg-brand-surface/10 text-brand-surface'
+                : 'text-brand-surface/70 hover:bg-brand-surface/[0.06] hover:text-brand-surface'
         }`
 
+    const sectionLabel = "text-[11px] font-semibold tracking-[0.08em] uppercase text-brand-surface/40 px-3 pb-2"
+
     return (
-        <aside className="w-[180px] bg-white border-r border-pos-border flex flex-col h-screen sticky top-0">
-            <div className="p-4 border-b border-pos-border">
-                <h1 className="text-lg font-bold text-pos-text text-center">POS Logo</h1>
+        <aside className={`${collapsed ? 'w-[80px]' : 'w-[248px]'} bg-brand-ink text-brand-surface flex flex-col h-screen sticky top-0 p-3.5 font-sans transition-[width] duration-200`}>
+            <div className={`flex items-center gap-2 pb-4 pt-1 ${collapsed ? 'flex-col' : 'justify-between px-2.5'}`}>
+                <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0 overflow-hidden">
+                    <span className="w-[26px] h-[26px] rounded-lg bg-brand-surface grid place-items-center flex-none">
+                        <span className="w-[9px] h-[9px] rounded-full bg-brand-accent" />
+                    </span>
+                    {!collapsed && <span className="text-[19px] font-semibold tracking-[-0.02em] whitespace-nowrap">Singla-POS</span>}
+                </Link>
+                <button
+                    onClick={toggleCollapsed}
+                    title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    className="w-7 h-7 grid place-items-center rounded-lg text-brand-surface/55 hover:text-brand-surface hover:bg-brand-surface/[0.08] transition-colors cursor-pointer flex-none"
+                >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${collapsed ? 'rotate-180' : ''}`}>
+                        <path d="M15 18l-6-6 6-6"></path>
+                    </svg>
+                </button>
             </div>
 
-            <nav className="flex-1 p-3 space-y-1">
+            <ShopSelector collapsed={collapsed} />
+
+            {canAccessPOS && (
+                <button
+                    onClick={() => navigate('/sales')}
+                    title={collapsed ? 'New sale' : undefined}
+                    className="mt-3.5 flex items-center justify-center gap-2 bg-brand-accent text-brand-ink border-0 rounded-xl py-3 text-sm font-bold cursor-pointer hover:bg-brand-surface transition-colors"
+                >
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                    {!collapsed && 'New sale'}
+                </button>
+            )}
+
+            <nav className="mt-5 grid gap-0.5 overflow-y-auto">
+                {(canAccessDashboard || canAccessPOS) && (
+                    collapsed
+                        ? <div className="h-px bg-brand-surface/10 mx-2 mb-2" />
+                        : <div className={sectionLabel}>Overview</div>
+                )}
                 {canAccessDashboard && (
-                    <NavLink to="/" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                        </svg>
-                        <span className="text-sm">Dashboard</span>
+                    <NavLink to="/dashboard" className={navLinkClass} title={collapsed ? 'Dashboard' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>
+                        {!collapsed && 'Dashboard'}
                     </NavLink>
                 )}
                 {canAccessPOS && (
-                    <NavLink to="/sales" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="9" cy="21" r="1"></circle>
-                            <circle cx="20" cy="21" r="1"></circle>
-                            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-                        </svg>
-                        <span className="text-sm">New Sales</span>
+                    <NavLink to="/sales" className={navLinkClass} title={collapsed ? 'Sell' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="20" r="1.4"></circle><circle cx="18" cy="20" r="1.4"></circle><path d="M2.5 3h2.6l2.4 12.2a1 1 0 0 0 1 .8h9.4a1 1 0 0 0 1-.8L21 7H6"></path></svg>
+                        {!collapsed && 'Sell'}
                     </NavLink>
                 )}
                 {canAccessPOS && (
-                    <NavLink to="/transactions" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10 9 9 9 8 9"></polyline>
-                        </svg>
-                        <span className="text-sm">Transactions</span>
+                    <NavLink to="/transactions" className={navLinkClass} title={collapsed ? 'Transactions' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"></path><path d="M9 7h6M9 11h6M9 15h4"></path></svg>
+                        {!collapsed && 'Transactions'}
                     </NavLink>
+                )}
+
+                {(canAccessInventory || canAccessCustomers || canAccessReports) && (
+                    collapsed
+                        ? <div className="h-px bg-brand-surface/10 mx-2 mt-3 mb-2" />
+                        : <div className={`${sectionLabel} pt-4`}>Manage</div>
                 )}
                 {canAccessInventory && (
-                    <NavLink to="/inventory" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                        </svg>
-                        <span className="text-sm">Inventory</span>
+                    <NavLink to="/inventory" className={navLinkClass} title={collapsed ? 'Inventory' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"></path><path d="M3 8l9 5 9-5M12 13v8"></path></svg>
+                        {!collapsed && <span className="flex-1">Inventory</span>}
+                        {lowStockCount > 0 && !collapsed && (
+                            <span className="text-[11px] font-bold bg-brand-accent text-brand-ink px-1.5 py-px rounded-full">{lowStockCount}</span>
+                        )}
+                        {lowStockCount > 0 && collapsed && (
+                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-accent" />
+                        )}
                     </NavLink>
                 )}
                 {canAccessCustomers && (
-                    <NavLink to="/customers" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                        </svg>
-                        <span className="text-sm">Customers</span>
+                    <NavLink to="/customers" className={navLinkClass} title={collapsed ? 'Customers' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"></path></svg>
+                        {!collapsed && 'Customers'}
                     </NavLink>
                 )}
                 {canAccessReports && (
-                    <NavLink to="/reports" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="20" x2="18" y2="10"></line>
-                            <line x1="12" y1="20" x2="12" y2="4"></line>
-                            <line x1="6" y1="20" x2="6" y2="14"></line>
-                        </svg>
-                        <span className="text-sm">Reports</span>
+                    <NavLink to="/reports" className={navLinkClass} title={collapsed ? 'Reports' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+                        {!collapsed && 'Reports'}
                     </NavLink>
                 )}
             </nav>
 
-            {/* Shift Status */}
-            <div className="p-3 border-t border-pos-border">
-                <button
-                    onClick={() => setShowShiftModal(true)}
-                    className={`w-full p-3 rounded-lg transition-colors ${
-                        isShiftOpen
-                            ? 'bg-green-50 hover:bg-green-100'
-                            : 'bg-gray-50 hover:bg-gray-100'
-                    }`}
-                >
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${isShiftOpen ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                        <span className={`text-xs font-medium ${isShiftOpen ? 'text-green-700' : 'text-gray-600'}`}>
-                            {isShiftOpen ? 'Shift Open' : 'No Shift'}
-                        </span>
-                    </div>
-                    {isShiftOpen && currentShift && (
-                        <div className="mt-1.5 text-left">
-                            <p className="text-xs text-gray-500">
-                                Started: {formatShiftTime(currentShift.started_at)}
-                            </p>
-                        </div>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                        {isShiftOpen ? 'Click to close shift' : 'Click to open shift'}
-                    </p>
-                </button>
-            </div>
-
-            <div className="p-3 border-t border-pos-border space-y-1">
+            <div className="mt-auto grid gap-0.5 pt-3">
+                {canAccessPOS && (
+                    <button
+                        onClick={() => setShowShiftModal(true)}
+                        title={collapsed ? (isShiftOpen ? 'Shift open (tap to close)' : 'No shift open (tap to open)') : undefined}
+                        className={`text-left mb-3 rounded-xl cursor-pointer border transition-colors ${collapsed ? 'flex items-center justify-center px-0 py-3' : 'px-3.5 py-3'} ${
+                            isShiftOpen
+                                ? 'bg-[rgba(111,211,168,0.08)] border-[rgba(111,211,168,0.25)]'
+                                : 'bg-brand-surface/[0.04] border-brand-surface/10'
+                        }`}
+                    >
+                        {collapsed ? (
+                            <span
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{
+                                    background: isShiftOpen ? '#6fd3a8' : 'rgba(240,248,245,0.4)',
+                                    boxShadow: `0 0 0 3px ${isShiftOpen ? 'rgba(111,211,168,0.2)' : 'transparent'}`
+                                }}
+                            />
+                        ) : (
+                            <>
+                                <span className="flex items-center gap-2 text-[13px] font-semibold">
+                                    <span
+                                        className="w-2 h-2 rounded-full"
+                                        style={{
+                                            background: isShiftOpen ? '#6fd3a8' : 'rgba(240,248,245,0.4)',
+                                            boxShadow: `0 0 0 3px ${isShiftOpen ? 'rgba(111,211,168,0.2)' : 'transparent'}`
+                                        }}
+                                    />
+                                    {isShiftOpen && currentShift ? `Shift open · ${formatShiftTime(currentShift.started_at)}` : 'No shift open'}
+                                </span>
+                                <span className="block text-xs text-brand-surface/60 mt-1 pl-4">
+                                    {isShiftOpen ? 'Tap to count cash & close' : 'Tap to open a shift'}
+                                </span>
+                            </>
+                        )}
+                    </button>
+                )}
                 {canAccessSettings && (
-                    <NavLink to="/settings" className={navLinkClass}>
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="3"></circle>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                        </svg>
-                        <span className="text-sm">Settings</span>
+                    <NavLink to="/settings" className={navLinkClass} title={collapsed ? 'Settings' : undefined}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+                        {!collapsed && 'Settings'}
                     </NavLink>
                 )}
                 <button
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    className={`flex items-center gap-3 rounded-[10px] text-sm font-medium text-brand-surface/70 hover:bg-brand-surface/[0.06] hover:text-brand-surface transition-colors cursor-pointer ${collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'}`}
                     onClick={handleLogout}
+                    title={collapsed ? 'Log out' : undefined}
                 >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                        <polyline points="16 17 21 12 16 7"></polyline>
-                        <line x1="21" y1="12" x2="9" y2="12"></line>
-                    </svg>
-                    <span className="text-sm">Logout</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"></path></svg>
+                    {!collapsed && 'Log out'}
                 </button>
             </div>
 
-            {/* Shift Modal */}
-            <ShiftModal
-                isOpen={showShiftModal}
-                onClose={() => setShowShiftModal(false)}
-            />
+            <ShiftModal isOpen={showShiftModal} onClose={() => setShowShiftModal(false)} />
         </aside>
     )
 }

@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { FiUser, FiMail, FiLock, FiSave } from 'react-icons/fi'
 
+const inputClass = 'w-full px-3.5 py-2.5 border border-brand-ink/[0.16] rounded-xl outline-none focus:border-brand-ink transition-colors'
+const labelClass = 'block text-sm font-semibold mb-1.5'
+
 const ProfileSettings = () => {
   const { user } = useAuth()
   const [formData, setFormData] = useState({
@@ -81,82 +84,76 @@ const ProfileSettings = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 font-sans text-brand-ink">
       {/* Profile Information */}
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white rounded-2xl border border-brand-ink/[0.09] p-6">
         <div className="flex items-center gap-3 mb-6">
-          <FiUser className="w-6 h-6 text-pos-primary" />
-          <h2 className="text-xl font-semibold text-pos-text">Profile Information</h2>
+          <FiUser className="w-5 h-5 text-brand-ink/60" />
+          <h2 className="text-base font-semibold">Profile information</h2>
         </div>
 
         {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+          <div className="mb-4 p-3 bg-[#2f7a5f]/10 border border-[#2f7a5f]/20 text-[#2f7a5f] rounded-xl text-sm">
             {success}
           </div>
         )}
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+          <div className="mb-4 p-3 bg-[#c8553d]/10 border border-[#c8553d]/20 text-[#c8553d] rounded-xl text-sm">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleUpdateProfile} className="space-y-4">
+        <form onSubmit={handleUpdateProfile} className="grid gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                First Name
-              </label>
+              <label className={labelClass}>First name</label>
               <input
                 type="text"
                 name="first_name"
                 value={formData.first_name}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                className={inputClass}
                 placeholder="John"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name
-              </label>
+              <label className={labelClass}>Last name</label>
               <input
                 type="text"
                 name="last_name"
                 value={formData.last_name}
                 onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+                className={inputClass}
                 placeholder="Doe"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Username
-            </label>
+            <label className={labelClass}>Username</label>
             <input
               type="text"
               name="username"
               value={formData.username}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+              className={inputClass}
               placeholder="johndoe"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <FiMail className="inline w-4 h-4 mr-1" />
-              Email Address
+            <label className={labelClass}>
+              <FiMail className="inline w-4 h-4 mr-1 -mt-0.5" />
+              Email address
             </label>
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+              className={inputClass}
               placeholder="john@example.com"
             />
           </div>
@@ -164,60 +161,54 @@ const ProfileSettings = () => {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors disabled:bg-gray-400"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors disabled:opacity-50 font-semibold cursor-pointer"
           >
             <FiSave className="w-4 h-4" />
-            {loading ? 'Saving...' : 'Save Changes'}
+            {loading ? 'Saving…' : 'Save changes'}
           </button>
         </form>
       </div>
 
       {/* Change Password */}
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-white rounded-2xl border border-brand-ink/[0.09] p-6">
         <div className="flex items-center gap-3 mb-6">
-          <FiLock className="w-6 h-6 text-pos-primary" />
-          <h2 className="text-xl font-semibold text-pos-text">Change Password</h2>
+          <FiLock className="w-5 h-5 text-brand-ink/60" />
+          <h2 className="text-base font-semibold">Change password</h2>
         </div>
 
-        <form onSubmit={handleChangePassword} className="space-y-4">
+        <form onSubmit={handleChangePassword} className="grid gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Current Password
-            </label>
+            <label className={labelClass}>Current password</label>
             <input
               type="password"
               name="current_password"
               value={passwordData.current_password}
               onChange={handlePasswordChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+              className={inputClass}
               placeholder="Enter current password"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              New Password
-            </label>
+            <label className={labelClass}>New password</label>
             <input
               type="password"
               name="new_password"
               value={passwordData.new_password}
               onChange={handlePasswordChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+              className={inputClass}
               placeholder="Enter new password"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Confirm New Password
-            </label>
+            <label className={labelClass}>Confirm new password</label>
             <input
               type="password"
               name="confirm_password"
               value={passwordData.confirm_password}
               onChange={handlePasswordChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pos-primary/20 focus:border-pos-primary"
+              className={inputClass}
               placeholder="Confirm new password"
             />
           </div>
@@ -225,10 +216,10 @@ const ProfileSettings = () => {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-pos-primary text-white rounded-lg hover:bg-pos-primary/90 transition-colors disabled:bg-gray-400"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors disabled:opacity-50 font-semibold cursor-pointer"
           >
             <FiLock className="w-4 h-4" />
-            {loading ? 'Changing...' : 'Change Password'}
+            {loading ? 'Changing…' : 'Change password'}
           </button>
         </form>
       </div>

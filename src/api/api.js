@@ -76,9 +76,18 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (credentials) => api.post('/auth/login/', credentials),
   signup: (userData) => api.post('/auth/signup/', userData),
+  signupWithShop: (data) => api.post('/auth/signup-with-shop/', data),
   logout: (data) => api.post('/auth/logout/', data),
   getCurrentUser: () => api.get('/auth/user/'),
   get: (url, config) => api.get(url, config),
+  mintHandoff: (shopId) => api.post('/auth/handoff/mint/', { shop_id: shopId }),
+  exchangeHandoff: (code) => api.post('/auth/handoff/exchange/', { code }),
+  verifyLoginOtp: (loginToken, otpCode, rememberMe) => api.post('/auth/login/verify-otp/', { login_token: loginToken, otp_code: otpCode, remember_me: rememberMe }),
+  resendLoginOtp: (loginToken) => api.post('/auth/login/resend-otp/', { login_token: loginToken }),
+  verifyEmail: (code) => api.post('/auth/verify-email/', { code }),
+  resendVerifyEmail: () => api.post('/auth/resend-verify-email/'),
+  getInvite: (token) => api.get(`/auth/invite/${token}/`),
+  acceptInvite: (token, password) => api.post(`/auth/invite/${token}/accept/`, { password }),
 };
 
 // Shops API calls
@@ -92,6 +101,8 @@ export const shopsAPI = {
   inviteStaff: (shopId, data) => api.post(`/shops/${shopId}/invite/`, data),
   removeMember: (shopId, userId) => api.post(`/shops/${shopId}/remove_member/`, { user_id: userId }),
   updateMemberRole: (shopId, userId, role) => api.post(`/shops/${shopId}/update_member_role/`, { user_id: userId, role }),
+  checkSlug: (slug) => api.get('/shops/check_slug/', { params: { slug } }),
+  resolveBySlug: (slug) => api.get('/shops/resolve/', { params: { slug } }),
 };
 
 // Products API calls
