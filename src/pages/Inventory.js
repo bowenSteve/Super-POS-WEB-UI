@@ -716,8 +716,8 @@ function Inventory() {
                                         <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className={labelClass}>SKU *</label>
-                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} required className={inputClass} />
+                                        <label className={labelClass}>SKU</label>
+                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} placeholder="Optional" className={inputClass} />
                                     </div>
                                 </div>
 
@@ -790,8 +790,8 @@ function Inventory() {
                                         <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={inputClass} />
                                     </div>
                                     <div>
-                                        <label className={labelClass}>SKU *</label>
-                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} required className={inputClass} />
+                                        <label className={labelClass}>SKU</label>
+                                        <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} placeholder="Optional" className={inputClass} />
                                     </div>
                                 </div>
 
