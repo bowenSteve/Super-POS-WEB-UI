@@ -154,6 +154,20 @@ export const salesAPI = {
   exportShiftPDF: (id) => api.get(`/sales/shifts/${id}/export_pdf/`, {
     responseType: 'blob',
   }),
+  // Historical sales import (backfilling sales recorded on paper)
+  importSales: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/sales/transactions/import_sales/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  downloadImportSample: () => api.get('/sales/transactions/download_import_sample/', {
+    responseType: 'blob',
+  }),
+  quickAddSale: (data) => api.post('/sales/transactions/quick_add_sale/', data),
 };
 
 // Customers API calls
@@ -178,6 +192,18 @@ export const reportsAPI = {
   getSalesTrend: (params) => api.get('/reports/sales-trend/', { params }),
   getTopProducts: (params) => api.get('/reports/top-products/', { params }),
   getPaymentBreakdown: (params) => api.get('/reports/payment-breakdown/', { params }),
+};
+
+// Platform admin API calls - cross-tenant, requires is_superuser
+export const platformAdminAPI = {
+  getOverview: () => api.get('/platform/overview/'),
+  getShops: (params) => api.get('/platform/shops/', { params }),
+  getUsers: (params) => api.get('/platform/users/', { params }),
+};
+
+// AI sales reports - owner/manager only
+export const aiReportsAPI = {
+  generate: (period) => api.post('/ai-reports/generate/', { period }),
 };
 
 export default api;

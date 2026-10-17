@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Sidebar from "../components/Sidebar"
-import { salesAPI, productsAPI } from '../api/api'
+import { salesAPI, productsAPI, aiReportsAPI } from '../api/api'
 import { FiDollarSign, FiShoppingCart, FiTrendingUp, FiUsers, FiCalendar, FiDownload, FiRefreshCw } from 'react-icons/fi'
 import {
     LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -19,12 +19,19 @@ function Reports() {
     const [customDateFrom, setCustomDateFrom] = useState('')
     const [customDateTo, setCustomDateTo] = useState('')
 
+    // AI Insights state
+    const [aiReport, setAiReport] = useState(null)
+    const [aiLoading, setAiLoading] = useState(false)
+    const [aiError, setAiError] = useState('')
+
     // Computed analytics state
     const [analytics, setAnalytics] = useState({
         totalSales: 0,
         totalTransactions: 0,
         averageOrderValue: 0,
         totalItemsSold: 0,
+        totalProfit: 0,
+        profitMargin: 0,
         salesTrend: [],
         paymentBreakdown: [],
         topProducts: [],
@@ -126,8 +133,26 @@ function Reports() {
         // Filter only completed transactions
         const completedTx = txData.filter(tx => tx.status === 'completed')
 
+        // Product cost lookup, for profit = revenue - cost of goods sold.
+        // Items with no catalog product (e.g. imported sales with a
+        // free-text product name) contribute 0 cost - their real cost
+        // isn't known, so we can't claim a margin on them.
+        const costById = {}
+        prodData.forEach(p => { costById[p.id] = parseFloat(p.cost_price || 0) })
+
         // Total sales
         const totalSales = completedTx.reduce((sum, tx) => sum + parseFloat(tx.total || 0), 0)
+
+        // Total cost of goods sold, and profit = revenue - COGS
+        const totalCost = completedTx.reduce((sum, tx) => {
+            const items = tx.items || []
+            return sum + items.reduce((itemSum, item) => {
+                const productId = item.product_id || item.product
+                return itemSum + (costById[productId] || 0) * (item.quantity || 0)
+            }, 0)
+        }, 0)
+        const totalProfit = totalSales - totalCost
+        const profitMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0
 
         // Total transactions
         const totalTransactions = completedTx.length
@@ -144,7 +169,7 @@ function Reports() {
         // Sales trend (group by date)
         const salesByDate = {}
         completedTx.forEach(tx => {
-            const date = tx.created_at?.split('T')[0] || 'Unknown'
+            const date = tx.transaction_date || tx.created_at?.split('T')[0] || 'Unknown'
             if (!salesByDate[date]) {
                 salesByDate[date] = { date, sales: 0, transactions: 0 }
             }
@@ -186,11 +211,15 @@ function Reports() {
                         id: productId,
                         name: productName,
                         quantity: 0,
-                        revenue: 0
+                        revenue: 0,
+                        profit: 0
                     }
                 }
-                productSales[productId].quantity += item.quantity || 0
-                productSales[productId].revenue += parseFloat(item.subtotal || item.total || 0)
+                const quantity = item.quantity || 0
+                const revenue = parseFloat(item.subtotal || item.total || 0)
+                productSales[productId].quantity += quantity
+                productSales[productId].revenue += revenue
+                productSales[productId].profit += revenue - (costById[productId] || 0) * quantity
             })
         })
 
@@ -215,6 +244,8 @@ function Reports() {
             totalTransactions,
             averageOrderValue,
             totalItemsSold,
+            totalProfit,
+            profitMargin,
             salesTrend,
             paymentBreakdown,
             topProducts,
@@ -289,6 +320,33 @@ function Reports() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateRange, customDateFrom, customDateTo, activeView])
+
+    // A previously-generated AI report is for whatever period was selected
+    // when it was generated - clear it when the period changes so a stale
+    // report for a different window doesn't linger on screen.
+    useEffect(() => {
+        setAiReport(null)
+        setAiError('')
+    }, [dateRange])
+
+    const handleGenerateAiReport = async () => {
+        if (dateRange === 'custom') {
+            toast.error('AI Insights supports Today / 7 days / 30 days / 1 year, not a custom range')
+            return
+        }
+        setAiLoading(true)
+        setAiError('')
+        try {
+            const response = await aiReportsAPI.generate(dateRange)
+            setAiReport(response.data)
+        } catch (error) {
+            const msg = error.response?.data?.detail || 'Could not generate the AI report. Please try again.'
+            setAiError(msg)
+            toast.error(msg)
+        } finally {
+            setAiLoading(false)
+        }
+    }
 
     // Custom tooltip for charts
     const CustomTooltip = ({ active, payload, label }) => {
@@ -412,13 +470,27 @@ function Reports() {
                         >
                             Shift history
                         </button>
+                        {/* AI Insights temporarily disabled - re-enable by flipping this to true */}
+                        {false && (
+                        <button
+                            onClick={() => setActiveView('ai')}
+                            className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors cursor-pointer flex items-center gap-1.5 ${
+                                activeView === 'ai'
+                                    ? 'bg-brand-ink text-brand-surface'
+                                    : 'text-brand-ink/55 hover:bg-brand-surface'
+                            }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"></path></svg>
+                            AI Insights
+                        </button>
+                        )}
                     </div>
 
                     {/* Analytics View */}
                     {activeView === 'analytics' && (
                     <>
                     {/* Summary Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
                         <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-5">
                             <div className="flex items-center justify-between mb-3">
                                 <span className="text-brand-ink/55 text-sm">Total sales</span>
@@ -478,6 +550,21 @@ function Reports() {
                             </p>
                             <p className="text-sm text-brand-ink/50 mt-1">
                                 Total units
+                            </p>
+                        </div>
+
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-5">
+                            <div className="flex items-center justify-between mb-3">
+                                <span className="text-brand-ink/55 text-sm">Total profit</span>
+                                <div className="p-2 rounded-lg" style={{ background: 'rgba(20,55,59,0.1)' }}>
+                                    <FiTrendingUp style={{ color: '#14373b' }} size={18} />
+                                </div>
+                            </div>
+                            <p className="text-2xl font-semibold tracking-[-0.03em]">
+                                {formatCurrency(analytics.totalProfit)}
+                            </p>
+                            <p className="text-sm text-brand-ink/50 mt-1">
+                                {analytics.profitMargin.toFixed(1)}% margin
                             </p>
                         </div>
                     </div>
@@ -608,9 +695,14 @@ function Reports() {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <span className="font-semibold">
-                                                {formatCurrency(product.revenue)}
-                                            </span>
+                                            <div className="text-right">
+                                                <span className="font-semibold block">
+                                                    {formatCurrency(product.revenue)}
+                                                </span>
+                                                <span className="text-xs text-brand-ink/50">
+                                                    {formatCurrency(product.profit)} profit
+                                                </span>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -785,6 +877,100 @@ function Reports() {
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    )}
+
+                    {/* AI Insights View - temporarily disabled, see tab button above */}
+                    {false && activeView === 'ai' && (
+                        <div className="bg-white border border-brand-ink/[0.09] rounded-2xl p-6">
+                            <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
+                                <div>
+                                    <h2 className="text-base font-semibold">AI sales report</h2>
+                                    <p className="text-sm text-brand-ink/55 mt-0.5">
+                                        A short AI-written summary for the period selected above
+                                        ({dateRange === 'custom' ? 'custom range not supported' : { today: 'Today', week: 'Last 7 days', month: 'Last 30 days', year: 'Last 12 months' }[dateRange]}).
+                                        Only aggregate numbers are sent to the AI - never customer details or individual transactions.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleGenerateAiReport}
+                                    disabled={aiLoading}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-brand-ink text-brand-surface rounded-xl hover:bg-brand-ink/90 transition-colors disabled:opacity-60 font-semibold cursor-pointer flex-none"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v3m0 12v3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M3 12h3m12 0h3M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1"></path></svg>
+                                    {aiLoading ? 'Generating…' : aiReport ? 'Regenerate' : 'Generate AI report'}
+                                </button>
+                            </div>
+
+                            {aiLoading && (
+                                <div className="h-[200px] flex flex-col items-center justify-center gap-3 text-brand-ink/55">
+                                    <div className="w-8 h-8 border-2 border-brand-ink border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-sm">Reading your sales numbers…</p>
+                                </div>
+                            )}
+
+                            {!aiLoading && aiError && (
+                                <div className="h-[160px] flex items-center justify-center text-center">
+                                    <p className="text-sm" style={{ color: '#c8553d' }}>{aiError}</p>
+                                </div>
+                            )}
+
+                            {!aiLoading && !aiError && !aiReport && (
+                                <div className="h-[200px] flex flex-col items-center justify-center gap-2 text-center text-brand-ink/50">
+                                    <p className="text-sm">No report generated yet for this period.</p>
+                                    <p className="text-xs">Click "Generate AI report" above to get started.</p>
+                                </div>
+                            )}
+
+                            {!aiLoading && aiReport && (
+                                <div className="grid gap-5">
+                                    <div className="rounded-xl p-4" style={{ background: 'rgba(20,55,59,0.04)' }}>
+                                        <p className="text-[15px] font-semibold leading-snug">{aiReport.headline}</p>
+                                    </div>
+
+                                    {aiReport.trends?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-[12.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50 mb-2.5">Trends</h3>
+                                            <ul className="grid gap-2">
+                                                {aiReport.trends.map((t, i) => (
+                                                    <li key={i} className="flex items-start gap-2.5 text-sm text-brand-ink/80">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-brand-accent mt-[7px] flex-none" />
+                                                        {t}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {aiReport.top_performers?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-[12.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50 mb-2.5">Top performers</h3>
+                                            <ul className="grid gap-2">
+                                                {aiReport.top_performers.map((t, i) => (
+                                                    <li key={i} className="flex items-start gap-2.5 text-sm text-brand-ink/80">
+                                                        <span className="w-1.5 h-1.5 rounded-full flex-none mt-[7px]" style={{ background: '#2f7a5f' }} />
+                                                        {t}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {aiReport.actions?.length > 0 && (
+                                        <div>
+                                            <h3 className="text-[12.5px] font-semibold tracking-[0.06em] uppercase text-brand-ink/50 mb-2.5">Suggested actions</h3>
+                                            <ul className="grid gap-2">
+                                                {aiReport.actions.map((t, i) => (
+                                                    <li key={i} className="flex items-start gap-2.5 text-sm text-brand-ink/80">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-brand-ink mt-[7px] flex-none" />
+                                                        {t}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </main>

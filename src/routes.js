@@ -10,6 +10,7 @@ import CreateShop from "./pages/CreateShop"
 import AuthCallback from "./pages/AuthCallback"
 import VerifyEmail from "./pages/VerifyEmail"
 import AcceptInvite from "./pages/AcceptInvite"
+import SuperAdmin from "./pages/SuperAdmin"
 import ProtectedRoute from "./components/ProtectedRoute"
 import HomeRoute from "./components/HomeRoute"
 import MarketingPages from "./marketing/Pages"
@@ -57,6 +58,10 @@ const routes = [
     {
         path: '/accept-invite',
         element: <AcceptInvite />
+    },
+    {
+        path: '/super-admin',
+        element: <SuperAdmin />
     },
     {
         path: '/create-shop',

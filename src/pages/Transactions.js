@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuth } from "../context/AuthContext"
-import { salesAPI } from "../api/api"
+import { salesAPI, productsAPI } from "../api/api"
 import Sidebar from "../components/Sidebar"
 import ToastNotification, { toast } from '../components/ToastNotification'
 
@@ -58,6 +58,20 @@ function Transactions() {
     const [totalCount, setTotalCount] = useState(0)
     const [pageSize] = useState(50)
 
+    // Historical sales import (backfilling sales recorded on paper)
+    const [showImportModal, setShowImportModal] = useState(false)
+    const [importMode, setImportMode] = useState('upload')
+    const [importing, setImporting] = useState(false)
+    const [importResults, setImportResults] = useState(null)
+    const importFileInputRef = useRef(null)
+    const [qaDate, setQaDate] = useState("")
+    const [qaAmount, setQaAmount] = useState("")
+    const [qaProductName, setQaProductName] = useState("")
+    const [qaProductResults, setQaProductResults] = useState([])
+    const [qaPaymentMethod, setQaPaymentMethod] = useState("cash")
+    const [qaNotes, setQaNotes] = useState("")
+    const [submittingQuickAdd, setSubmittingQuickAdd] = useState(false)
+
     const taxSettings = currentShop?.tax_settings ? { ...defaultTaxSettings, ...currentShop.tax_settings } : defaultTaxSettings
     const receiptSettings = currentShop?.receipt_settings ? { ...defaultReceiptSettings, ...currentShop.receipt_settings } : defaultReceiptSettings
     const currency = currentShop?.currency || 'KSh'
@@ -90,6 +104,86 @@ function Transactions() {
             console.error(err)
         } finally {
             setLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (qaProductName.trim().length < 2) { setQaProductResults([]); return }
+        const timer = setTimeout(async () => {
+            try {
+                const response = await productsAPI.getAll({ search: qaProductName.trim(), page_size: 5 })
+                setQaProductResults(response.data.results || response.data || [])
+            } catch (err) { /* silent - this is just a convenience lookup */ }
+        }, 350)
+        return () => clearTimeout(timer)
+    }, [qaProductName])
+
+    const resetQuickAddForm = () => {
+        setQaDate(""); setQaAmount(""); setQaProductName(""); setQaProductResults([]); setQaPaymentMethod("cash"); setQaNotes("")
+    }
+
+    const closeImportModal = () => {
+        setShowImportModal(false); setImportResults(null); setImportMode('upload'); resetQuickAddForm()
+    }
+
+    const handleDownloadImportSample = async () => {
+        try {
+            toast.loading('Preparing template...', { id: 'import-sample-toast' })
+            const response = await salesAPI.downloadImportSample()
+            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'sales_import_sample.xlsx'
+            document.body.appendChild(link)
+            link.click()
+            window.URL.revokeObjectURL(url)
+            document.body.removeChild(link)
+            toast.success('Template downloaded!', { id: 'import-sample-toast' })
+        } catch (err) {
+            toast.error('Failed to download template', { id: 'import-sample-toast' })
+        }
+    }
+
+    const handleImportFileSelect = async (event) => {
+        const file = event.target.files[0]
+        if (!file) return
+        const validExt = ['.csv', '.xlsx', '.xls'].some((ext) => file.name.toLowerCase().endsWith(ext))
+        if (!validExt) {
+            toast.error('Please select a .csv, .xlsx, or .xls file')
+            event.target.value = ''
+            return
+        }
+        setImporting(true)
+        toast.loading('Importing sales...', { id: 'import-sales-toast' })
+        try {
+            const response = await salesAPI.importSales(file)
+            setImportResults(response.data.results)
+            toast.success(response.data.message, { id: 'import-sales-toast' })
+            fetchTransactions()
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to import sales', { id: 'import-sales-toast' })
+        } finally {
+            setImporting(false)
+            event.target.value = ''
+        }
+    }
+
+    const handleQuickAddSale = async () => {
+        if (!qaDate || !qaAmount) { toast.error('Date and amount are required'); return }
+        setSubmittingQuickAdd(true)
+        try {
+            await salesAPI.quickAddSale({
+                date: qaDate, amount: qaAmount, product_name: qaProductName || undefined,
+                payment_method: qaPaymentMethod, notes: qaNotes
+            })
+            toast.success('Sale added')
+            resetQuickAddForm()
+            fetchTransactions()
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to add sale')
+        } finally {
+            setSubmittingQuickAdd(false)
         }
     }
 
@@ -224,6 +318,10 @@ function Transactions() {
                             <h1 className="text-[22px] font-semibold tracking-[-0.03em]">Transactions</h1>
                             <div className="text-[13px] text-brand-ink/55 mt-0.5">Every receipt issued in {shopName}</div>
                         </div>
+                        <button onClick={() => setShowImportModal(true)} className="h-10 flex items-center gap-2 px-3.5 bg-white border border-brand-ink/[0.14] rounded-[11px] text-[13.5px] font-semibold cursor-pointer hover:bg-brand-surface transition-colors">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 15V3M8 7l4-4 4 4M4 21h16"></path></svg>
+                            Import past sales
+                        </button>
                         <button onClick={() => setShowExportModal(true)} className="h-10 flex items-center gap-2 px-3.5 bg-brand-ink text-brand-surface border-0 rounded-[11px] text-[13.5px] font-semibold cursor-pointer hover:bg-brand-ink/90 transition-colors">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"></path></svg>
                             Export PDF
@@ -314,8 +412,13 @@ function Transactions() {
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-3">
-                                                    <span className="inline-block text-xs font-semibold px-2.5 py-[3px] rounded-full whitespace-nowrap" style={{ background: ss[0], color: ss[1], border: `1px solid ${ss[2]}` }}>
-                                                        {t.status.charAt(0).toUpperCase() + t.status.slice(1)}
+                                                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                                        <span className="inline-block text-xs font-semibold px-2.5 py-[3px] rounded-full whitespace-nowrap" style={{ background: ss[0], color: ss[1], border: `1px solid ${ss[2]}` }}>
+                                                            {t.status.charAt(0).toUpperCase() + t.status.slice(1)}
+                                                        </span>
+                                                        {t.source === 'imported' && (
+                                                            <span className="inline-block text-xs font-semibold px-2.5 py-[3px] rounded-full whitespace-nowrap bg-brand-surface text-brand-ink/60 border border-brand-ink/[0.14]">Imported</span>
+                                                        )}
                                                     </span>
                                                 </td>
                                                 <td className="px-[18px] py-3 text-right font-mono font-medium whitespace-nowrap" style={{ textDecoration: t.status === 'refunded' ? 'line-through' : 'none' }}>
@@ -352,7 +455,12 @@ function Transactions() {
                                     </button>
                                 </div>
                                 <div className="text-[30px] font-semibold tracking-[-0.04em] mt-1.5">{currency} {selectedTransaction.total}</div>
-                                <div className="text-[12.5px] text-brand-surface/62 mt-0.5">{formatDate(selectedTransaction.created_at)} · {selectedTransaction.status}</div>
+                                <div className="text-[12.5px] text-brand-surface/62 mt-0.5">
+                                    {selectedTransaction.source === 'imported' && selectedTransaction.transaction_date
+                                        ? new Date(selectedTransaction.transaction_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                                        : formatDate(selectedTransaction.created_at)
+                                    } · {selectedTransaction.status}{selectedTransaction.source === 'imported' && ' · Imported'}
+                                </div>
                             </div>
                             <div className="p-5 grid gap-3.5">
                                 <div className="grid">
@@ -392,6 +500,112 @@ function Transactions() {
                             </div>
                         </aside>
                     </>
+                )}
+
+                <input
+                    ref={importFileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    onChange={handleImportFileSelect}
+                    style={{ display: 'none' }}
+                />
+
+                {showImportModal && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[110] p-4" onClick={closeImportModal}>
+                        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 grid gap-5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-semibold">Import past sales</h2>
+                                <button onClick={closeImportModal} className="text-brand-ink/40 hover:text-brand-ink">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+
+                            {importResults ? (
+                                <div className="grid gap-4">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="bg-brand-surface rounded-xl p-3">
+                                            <p className="text-xs text-brand-ink/60 font-medium mb-1">Total rows</p>
+                                            <p className="text-xl font-semibold">{importResults.total_rows}</p>
+                                        </div>
+                                        <div className="rounded-xl p-3" style={{ background: 'rgba(47,122,95,0.1)' }}>
+                                            <p className="text-xs font-medium mb-1" style={{ color: '#2f7a5f' }}>Imported</p>
+                                            <p className="text-xl font-semibold" style={{ color: '#2f7a5f' }}>{importResults.success.length}</p>
+                                        </div>
+                                        <div className="bg-brand-surface rounded-xl p-3">
+                                            <p className="text-xs text-brand-ink/60 font-medium mb-1">Errors</p>
+                                            <p className="text-xl font-semibold">{importResults.errors.length}</p>
+                                        </div>
+                                    </div>
+                                    {importResults.errors.length > 0 && (
+                                        <div>
+                                            <h3 className="text-sm font-semibold mb-2">Errors</h3>
+                                            <div className="bg-brand-surface rounded-xl p-3 max-h-48 overflow-y-auto grid gap-2">
+                                                {importResults.errors.map((item) => (
+                                                    <div key={`error-${item.row}`} className="text-sm"><span className="font-semibold">Row {item.row}:</span> {item.error}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <button onClick={closeImportModal} className="py-2.5 bg-brand-ink text-brand-surface rounded-[11px] font-semibold cursor-pointer">Done</button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex gap-2.5">
+                                        {['upload', 'quick'].map((m) => (
+                                            <button key={m} onClick={() => setImportMode(m)} className={`flex-1 py-2.5 rounded-[11px] font-semibold cursor-pointer ${importMode === m ? 'bg-brand-ink text-brand-surface' : 'bg-brand-surface'}`}>
+                                                {m === 'upload' ? 'Upload file' : 'Add one sale'}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {importMode === 'upload' ? (
+                                        <div className="grid gap-3">
+                                            <p className="text-[13px] text-brand-ink/65">Upload a CSV or Excel file with columns <span className="font-mono">date, amount</span> (required) and optionally <span className="font-mono">product_name, payment_method, notes</span>. This never affects stock levels.</p>
+                                            <button onClick={handleDownloadImportSample} className="text-[13px] font-semibold text-left underline w-fit cursor-pointer bg-transparent border-0 p-0">Download template</button>
+                                            <button onClick={() => importFileInputRef.current.click()} disabled={importing} className="py-2.5 bg-brand-ink text-brand-surface rounded-[11px] font-semibold cursor-pointer disabled:opacity-50">
+                                                {importing ? 'Importing…' : 'Choose file to upload'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-3.5">
+                                            <div className="grid gap-[7px]">
+                                                <label className="text-[13px] font-semibold">Date of sale</label>
+                                                <input type="date" value={qaDate} onChange={(e) => setQaDate(e.target.value)} className="h-11 border border-brand-ink/[0.16] rounded-[11px] px-3.5" />
+                                            </div>
+                                            <div className="grid gap-[7px]">
+                                                <label className="text-[13px] font-semibold">Amount ({currency})</label>
+                                                <input type="number" min="0" step="0.01" value={qaAmount} onChange={(e) => setQaAmount(e.target.value)} className="h-11 border border-brand-ink/[0.16] rounded-[11px] px-3.5" />
+                                            </div>
+                                            <div className="grid gap-[7px] relative">
+                                                <label className="text-[13px] font-semibold">Product (optional)</label>
+                                                <input type="text" value={qaProductName} onChange={(e) => setQaProductName(e.target.value)} placeholder="Type a product name, or leave blank" className="h-11 border border-brand-ink/[0.16] rounded-[11px] px-3.5" autoComplete="off" />
+                                                {qaProductResults.length > 0 && (
+                                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-brand-ink/[0.14] rounded-[11px] shadow-lg z-10 max-h-40 overflow-y-auto">
+                                                        {qaProductResults.map((p) => (
+                                                            <button key={p.id} onClick={() => { setQaProductName(p.name); setQaProductResults([]) }} className="w-full text-left px-3.5 py-2 text-sm hover:bg-brand-surface cursor-pointer">{p.name}</button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="grid gap-[7px]">
+                                                <label className="text-[13px] font-semibold">Payment method</label>
+                                                <select value={qaPaymentMethod} onChange={(e) => setQaPaymentMethod(e.target.value)} className="h-11 border border-brand-ink/[0.16] rounded-[11px] px-3.5">
+                                                    <option value="cash">Cash</option>
+                                                    <option value="mpesa">M-Pesa</option>
+                                                    <option value="split">Split</option>
+                                                    <option value="unknown">Not sure</option>
+                                                </select>
+                                            </div>
+                                            <textarea value={qaNotes} onChange={(e) => setQaNotes(e.target.value)} rows={2} placeholder="Notes (optional)" className="border border-brand-ink/[0.16] rounded-[11px] px-3.5 py-2.5 resize-none" />
+                                            <button onClick={handleQuickAddSale} disabled={submittingQuickAdd || !qaDate || !qaAmount} className="py-2.5 bg-brand-ink text-brand-surface rounded-[11px] font-semibold cursor-pointer disabled:opacity-50">
+                                                {submittingQuickAdd ? 'Adding…' : 'Add sale'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
                 )}
 
                 {showExportModal && (

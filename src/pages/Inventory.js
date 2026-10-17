@@ -34,7 +34,7 @@ function Inventory() {
         cost_price: "",
         selling_price: "",
         stock_quantity: "",
-        reorder_level: "10",
+        reorder_level: "2",
         description: ""
     })
 
@@ -114,7 +114,7 @@ function Inventory() {
                 cost_price: "",
                 selling_price: "",
                 stock_quantity: "",
-                reorder_level: "10",
+                reorder_level: "2",
                 description: ""
             })
             fetchProducts()
