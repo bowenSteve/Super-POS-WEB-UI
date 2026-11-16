@@ -100,9 +100,9 @@ function Home() {
             const { from, to } = getRangeDates(range)
             const prev = getPreviousRangeDates(range)
             const [txRes, prevTxRes, prodRes, openShiftRes] = await Promise.all([
-                salesAPI.getTransactions({ date_from: toISODate(from), date_to: toISODate(to) }),
-                salesAPI.getTransactions({ date_from: toISODate(prev.from), date_to: toISODate(prev.to) }),
-                productsAPI.getAll(),
+                salesAPI.getTransactions({ date_from: toISODate(from), date_to: toISODate(to), page_size: 1000 }),
+                salesAPI.getTransactions({ date_from: toISODate(prev.from), date_to: toISODate(prev.to), page_size: 1000 }),
+                productsAPI.getAll({ page_size: 1000 }),
                 salesAPI.getShifts({ status: 'open' }),
             ])
             setTransactions(asArray(txRes.data))
